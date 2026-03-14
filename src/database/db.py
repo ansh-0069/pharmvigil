@@ -4,8 +4,13 @@ Database layer — SQLAlchemy engine, session factory, and ORM models.
 from __future__ import annotations
 
 import os
+import uuid
 from contextlib import contextmanager
 from typing import Generator
+
+from dotenv import load_dotenv
+load_dotenv()  # Load .env before any env-var reads
+
 
 from sqlalchemy import (
     Column,
@@ -20,10 +25,14 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
-from src.utils.helpers import CONFIG
 
-# ── Connection URL ───────────────────────────────────
-_DB_URL: str = CONFIG.get("database", {}).get(
+from src.utils.helpers import CONFIG, ROOT_DIR
+
+# ── Connection URL ─────────────────────────────────────────────
+# Priority: USE_SQLITE=1 env var → config.yaml url → env vars → SQLite fallback
+_USE_SQLITE: bool = os.getenv("USE_SQLITE", "0") == "1"
+
+_PG_URL: str = CONFIG.get("database", {}).get(
     "url",
     "postgresql://{user}:{pw}@{host}:{port}/{db}".format(
         user=os.getenv("DB_USER", "pharma_user"),
@@ -33,8 +42,18 @@ _DB_URL: str = CONFIG.get("database", {}).get(
         db=os.getenv("DB_NAME", "pharmacovigilance"),
     ),
 )
+_SQLITE_URL: str = "sqlite:///" + str(ROOT_DIR / "pharma_local.db")
 
-engine = create_engine(_DB_URL, pool_pre_ping=True, pool_size=10)
+_DB_URL: str = _SQLITE_URL if _USE_SQLITE else _PG_URL
+
+# ── Engine ─────────────────────────────────────────────────────
+_connect_args = {"check_same_thread": False} if _DB_URL.startswith("sqlite") else {}
+_engine_kwargs: dict = {"connect_args": _connect_args}
+if not _DB_URL.startswith("sqlite"):
+    _engine_kwargs["pool_pre_ping"] = True
+    _engine_kwargs["pool_size"] = 10
+
+engine = create_engine(_DB_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 Base = declarative_base()
 
@@ -141,6 +160,21 @@ class QCReport(Base):
     inspector = Column(String(256), nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class SystemEvent(Base):
+    """Immutable audit trail entry for any operational action."""
+
+    __tablename__ = "system_events"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    entity_type = Column(String(64), index=True, nullable=False)   # submission | capa | qc | audit
+    entity_id = Column(String(64), index=True, nullable=False)     # PK of the related entity
+    event_type = Column(String(64), nullable=False)                 # created | updated | status_change …
+    event_description = Column(Text, nullable=False)
+    user_id = Column(String(64), nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+
 
 # ── Helpers ──────────────────────────────────────────
 def init_db() -> None:

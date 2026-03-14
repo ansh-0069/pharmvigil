@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 from src.api.submission_routes import router as submission_router
 from src.api.capa_routes import router as capa_router
 from src.api.audit_routes import router as audit_router
+from src.api.event_routes import router as event_router
 from src.models.predict import PredictionResult, get_predictor
 from src.services.submission_service import update_all_risk_scores
 
@@ -79,6 +80,7 @@ app.add_middleware(
 app.include_router(submission_router)
 app.include_router(capa_router)
 app.include_router(audit_router)
+app.include_router(event_router)
 
 
 # ── Schemas ──────────────────────────────────────────

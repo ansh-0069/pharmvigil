@@ -12,6 +12,7 @@ from loguru import logger
 from sqlalchemy import func
 
 from src.database.db import CapaCase, QCReport, Submission, SessionLocal
+from src.services.event_service import log_event
 
 
 # ── Service Functions ────────────────────────────────
@@ -96,6 +97,16 @@ def calculate_audit_metrics(product_id: str) -> dict:
             "audit_score": audit_score,
         }
         logger.info(f"Audit metrics for {product_id}: score={audit_score}")
+        log_event(
+            entity_type="audit",
+            entity_id=product_id,
+            event_type="audit_score_recalculated",
+            description=(
+                f"Audit score recalculated for '{product_id}': {audit_score} "
+                f"(on_time={on_time_rate:.2%}, capa_closure={capa_closure_rate:.2%}, "
+                f"qc_defect={qc_defect_rate:.2%})"
+            ),
+        )
         return result
 
 

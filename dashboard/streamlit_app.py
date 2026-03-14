@@ -245,8 +245,48 @@ def inject_css():
     """, unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════
-#  PLOTLY THEME HELPER
+def api_predict(drug: str, event: str) -> tuple[dict, float]:
+    start = time.time()
+    try:
+        r = requests.post(f"{API_URL}/predict", json={"drug_name":drug, "adverse_event":event}, timeout=5)
+        js = r.json() if r.status_code == 200 else {}
+        return js, (time.time() - start)*1000
+    except requests.RequestException:
+        return {}, (time.time() - start)*1000
+
+@st.cache_data(ttl=30)
+def fetch_events(limit: int = 50) -> list:
+    try:
+        r = requests.get(f"{API_URL}/api/v1/events/recent?limit={limit}", timeout=5)
+        return r.json() if r.status_code == 200 else []
+    except requests.RequestException:
+        return []
+
+@st.cache_data(ttl=30)
+def fetch_open_capas() -> list:
+    try:
+        r = requests.get(f"{API_URL}/capa/open", timeout=5)
+        return r.json() if r.status_code == 200 else []
+    except requests.RequestException:
+        return []
+
+@st.cache_data(ttl=30)
+def fetch_overdue_submissions() -> list:
+    try:
+        r = requests.get(f"{API_URL}/submissions/overdue", timeout=5)
+        return r.json() if r.status_code == 200 else []
+    except requests.RequestException:
+        return []
+
+@st.cache_data(ttl=60)
+def fetch_audit_portfolio() -> list:
+    try:
+        r = requests.get(f"{API_URL}/audit/portfolio", timeout=5)
+        return r.json() if r.status_code == 200 else []
+    except requests.RequestException:
+        return []
+
+
 # ═══════════════════════════════════════════════════════
 _PLOTLY_BASE = dict(
     paper_bgcolor="rgba(0,0,0,0)",
@@ -491,13 +531,15 @@ def main():
         f_scores = f_scores[f_scores["adverse_event"].isin(sel_events)]
 
     # ── TABS ─────────────────────────────────────────
-    t1, t2, t3, t4, t5, t6 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
         "🔍 Signal Detection",
         "💊 Drug Risk Analysis",
         "📈 Event Trends",
         "🌐 Network Graph",
         "🗺️ Geographic Map",
         "🧪 Risk Prediction",
+        "🛡️ Audit & Compliance",
+        "📜 System Activity",
     ])
 
     # ══════════════════════════════════════════════════
@@ -800,6 +842,116 @@ def main():
                         Select a drug and adverse event, then click <b>Analyze Risk</b>.
                     </p>
                 </div>""", unsafe_allow_html=True)
+
+
+    # ══════════════════════════════════════════════════
+    #  TAB 7 — AUDIT & COMPLIANCE
+    # ══════════════════════════════════════════════════
+    with t7:
+        st.markdown("### 🛡️ Audit Readiness & Portfolio Compliance")
+        
+        audit_data = fetch_audit_portfolio()
+        if not audit_data:
+            st.info("No audit metrics available. Ensure system data exists.")
+        else:
+            df_audit = pd.DataFrame(audit_data)
+            avg_on_time = df_audit["on_time_submission_rate"].mean() * 100
+            avg_capa = df_audit["capa_closure_rate"].mean() * 100
+            avg_defect = df_audit["qc_defect_rate"].mean() * 100
+            avg_score = df_audit["audit_score"].mean() * 100
+
+            # KPI Cards
+            k1, k2, k3, k4 = st.columns(4)
+            with k1:
+                kpi_card("Readiness Score", f"{avg_score:.1f}%", "kpi-blue", "🛡️")
+            with k2:
+                cls = "kpi-green" if avg_on_time > 80 else "kpi-amber"
+                kpi_card("On-Time Subs", f"{avg_on_time:.1f}%", cls, "📅")
+            with k3:
+                cls = "kpi-green" if avg_capa > 75 else "kpi-amber"
+                kpi_card("CAPA Closure", f"{avg_capa:.1f}%", cls, "✅")
+            with k4:
+                cls = "kpi-rose" if avg_defect > 10 else "kpi-green"
+                kpi_card("QC Defect Rate", f"{avg_defect:.1f}%", cls, "⚠️")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            c_left, c_right = st.columns(2)
+            
+            with c_left:
+                st.markdown("#### ⏳ Overdue Submissions")
+                osubs = fetch_overdue_submissions()
+                if not osubs:
+                    st.success("No overdue submissions.")
+                else:
+                    df_os = pd.DataFrame(osubs)[["product_id", "submission_type", "due_date", "risk_score"]]
+                    df_os["due_date"] = pd.to_datetime(df_os["due_date"]).dt.strftime("%Y-%m-%d")
+                    st.dataframe(df_os, use_container_width=True, hide_index=True)
+
+            with c_right:
+                st.markdown("#### 🚨 Open CAPA Cases")
+                capas = fetch_open_capas()
+                if not capas:
+                    st.success("No open CAPA cases.")
+                else:
+                    df_c = pd.DataFrame(capas)[["product_id", "state", "title", "due_date"]]
+                    df_c["due_date"] = pd.to_datetime(df_c["due_date"]).dt.strftime("%Y-%m-%d")
+                    st.dataframe(df_c, use_container_width=True, hide_index=True)
+
+
+    # ══════════════════════════════════════════════════
+    #  TAB 8 — SYSTEM ACTIVITY
+    # ══════════════════════════════════════════════════
+    with t8:
+        c_head, c_btn = st.columns([5, 1])
+        with c_head:
+            st.markdown("### 📜 System Activity Timeline")
+        with c_btn:
+            if st.button("🔄 Refresh", use_container_width=True):
+                fetch_events.clear()
+
+        events = fetch_events(limit=50)
+        
+        if not events:
+            st.info("No system events recorded yet.")
+        else:
+            html = '<div style="margin-top:10px; padding:0 10px;">'
+            for ev in events:
+                # Deterministic styling based on event type
+                ev_type = ev.get('event_type', '').lower()
+                if 'create' in ev_type:
+                    color = C["green"]
+                    icon = "✨"
+                elif 'status' in ev_type or 'change' in ev_type:
+                    color = C["blue"]
+                    icon = "🔄"
+                elif 'error' in ev_type or 'fail' in ev_type:
+                    color = C["rose"]
+                    icon = "❌"
+                elif 'score' in ev_type:
+                    color = C["amber"]
+                    icon = "📊"
+                else:
+                    color = C["text_muted"]
+                    icon = "📌"
+
+                dt_fmt = pd.to_datetime(ev['created_at']).strftime("%Y-%m-%d %H:%M:%S")
+                user = ev.get('user_id') or 'System'
+                
+                html += f"""
+                <div style="border-left: 2px solid {color}; padding-left: 16px; margin-bottom: 24px; position: relative;">
+                    <div style="position: absolute; left: -14px; top: 0px; background: #0b0f19; padding: 2px;">
+                        {icon}
+                    </div>
+                    <div style="font-size: 0.75rem; color: #6b7fa0; margin-bottom: 4px; font-family: 'JetBrains Mono', monospace;">
+                        {dt_fmt} &nbsp;•&nbsp; {ev['entity_type'].upper()} &nbsp;•&nbsp; {user}
+                    </div>
+                    <div style="color: {C['text']}; font-size: 0.95rem; font-weight: 500;">
+                        {ev['event_description']}
+                    </div>
+                </div>
+                """
+            html += "</div>"
+            st.markdown(html, unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

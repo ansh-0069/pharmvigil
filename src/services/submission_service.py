@@ -14,6 +14,7 @@ from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from src.database.db import Submission, SessionLocal
+from src.services.event_service import log_event
 
 # ── Constants ────────────────────────────────────────
 VALID_SUBMISSION_TYPES = {"PSUR", "DSUR", "PBRER", "RMP"}
@@ -63,6 +64,15 @@ def create_submission(
             f"Created submission {submission.id}: "
             f"{submission_type} for product {product_id}, due {due_date.date()}"
         )
+        log_event(
+            entity_type="submission",
+            entity_id=str(submission.id),
+            event_type="created",
+            description=(
+                f"{submission_type} submission created for product '{product_id}' "
+                f"due {due_date.date()}"
+            ),
+        )
         return submission
 
 
@@ -83,12 +93,22 @@ def update_submission_status(
         if not sub:
             raise ValueError(f"Submission {submission_id} not found")
 
+        old_status = sub.status
         sub.status = new_status
         if new_status == "SUBMITTED":
             sub.submitted_date = submitted_date or datetime.utcnow()
         session.commit()
         session.refresh(sub)
         logger.info(f"Submission {submission_id} status → {new_status}")
+        log_event(
+            entity_type="submission",
+            entity_id=str(submission_id),
+            event_type="status_change",
+            description=(
+                f"Submission status changed: {old_status} → {new_status} "
+                f"(product: '{sub.product_id}', type: {sub.submission_type})"
+            ),
+        )
         return sub
 
 
@@ -163,6 +183,12 @@ def update_all_risk_scores() -> None:
             )
         session.commit()
         logger.info(f"Updated risk scores for {len(pending)} pending submissions")
+        log_event(
+            entity_type="submission",
+            entity_id="scheduler",
+            event_type="risk_scores_updated",
+            description=f"Daily scheduler recalculated risk scores for {len(pending)} pending submissions",
+        )
 
 
 # ── Helpers ──────────────────────────────────────────

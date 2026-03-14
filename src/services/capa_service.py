@@ -14,6 +14,7 @@ from sqlalchemy import and_
 from transitions import Machine
 
 from src.database.db import CapaCase, SessionLocal
+from src.services.event_service import log_event
 
 # ── State Machine Definition ─────────────────────────
 CAPA_STATES = ["OPEN", "INVESTIGATION", "CORRECTIVE_ACTION", "VERIFICATION", "CLOSED"]
@@ -88,6 +89,12 @@ def create_capa_case(
         session.commit()
         session.refresh(case)
         logger.info(f"Created CAPA case {case.id}: '{title}' for product {product_id}")
+        log_event(
+            entity_type="capa",
+            entity_id=str(case.id),
+            event_type="created",
+            description=f"CAPA case opened: '{title}' for product '{product_id}'",
+        )
         return _case_to_dict(case)
 
 
@@ -113,11 +120,21 @@ def update_capa_status(case_id: int, new_state: str) -> dict:
                 f"Invalid transition: {case.state} → {new_state}. {exc}"
             ) from exc
 
+        old_state = case.state
         case.state = new_state
         case.updated_at = datetime.utcnow()
         session.commit()
         session.refresh(case)
-        logger.info(f"CAPA {case_id}: {case.state} → {new_state}")
+        logger.info(f"CAPA {case_id}: {old_state} → {new_state}")
+        log_event(
+            entity_type="capa",
+            entity_id=str(case_id),
+            event_type="status_change",
+            description=(
+                f"CAPA status changed: {old_state} → {new_state} "
+                f"(case: '{case.title}', product: '{case.product_id}')"
+            ),
+        )
         return _case_to_dict(case)
 
 
