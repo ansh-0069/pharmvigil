@@ -1,0 +1,44 @@
+# ── Python ────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# ── Virtual environments ─────────────────────────────
+venv/
+.venv/
+env/
+
+# ── IDE ──────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── Data & Models (large files) ──────────────────────
+data/raw/*.csv
+data/processed/*.csv
+models/*.joblib
+models/*.pkl
+
+# ── Logs ─────────────────────────────────────────────
+logs/
+*.log
+
+# ── OS ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Testing ──────────────────────────────────────────
+.pytest_cache/
+htmlcov/
+.coverage
+
+# ── Docker ───────────────────────────────────────────
+*.env

@@ -1,0 +1,64 @@
+# ─────────────────────────────────────────────────────
+# AI Pharmacovigilance Intelligence Platform — Config
+# ─────────────────────────────────────────────────────
+
+project:
+  name: "AI Pharmacovigilance Intelligence Platform"
+  version: "1.0.0"
+
+database:
+  host: ${DB_HOST:-localhost}
+  port: ${DB_PORT:-5432}
+  name: ${DB_NAME:-pharmacovigilance}
+  user: ${DB_USER:-pharma_user}
+  password: ${DB_PASSWORD:-pharma_pass}
+  url: "postgresql://${DB_USER:-pharma_user}:${DB_PASSWORD:-pharma_pass}@${DB_HOST:-localhost}:${DB_PORT:-5432}/${DB_NAME:-pharmacovigilance}"
+
+data:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  faers_files:
+    - "adverse_events.csv"
+    - "drug_info.csv"
+    - "demographics.csv"
+
+nlp:
+  spacy_model: "en_core_web_sm"
+  confidence_threshold: 0.75
+
+model:
+  artifact_dir: "models"
+  isolation_forest:
+    n_estimators: 200
+    contamination: 0.05
+    random_state: 42
+  xgboost:
+    n_estimators: 300
+    max_depth: 6
+    learning_rate: 0.1
+    random_state: 42
+
+signal_detection:
+  risk_thresholds:
+    low: 0.3
+    medium: 0.6
+    high: 0.8
+  top_n_signals: 50
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  reload: true
+
+dashboard:
+  port: 8501
+  theme: "dark"
+
+airflow:
+  dag_id: "pharmacovigilance_etl"
+  schedule_interval: "@daily"
+  start_date: "2024-01-01"
+
+logging:
+  level: "INFO"
+  format: "<green>{time}</green> | <level>{level}</level> | {message}"
