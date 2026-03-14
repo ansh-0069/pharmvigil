@@ -10,7 +10,6 @@
     <img src="https://img.shields.io/badge/XGBoost-2.0-ff6600" alt="XGBoost">
     <img src="https://img.shields.io/badge/Streamlit-1.31-ff4b4b?logo=streamlit" alt="Streamlit">
     <img src="https://img.shields.io/badge/PostgreSQL-16-4169e1?logo=postgresql" alt="PostgreSQL">
-    <img src="https://img.shields.io/badge/Docker-Ready-2496ed?logo=docker" alt="Docker">
     <img src="https://img.shields.io/badge/Airflow-2.8-017cee?logo=apacheairflow" alt="Airflow">
   </p>
 </p>
@@ -80,8 +79,6 @@ graph TB
 ```
 ├── README.md
 ├── requirements.txt
-├── Dockerfile
-├── docker-compose.yml
 ├── Makefile
 ├── .gitignore
 │
@@ -140,7 +137,6 @@ graph TB
 
 - Python 3.11+
 - PostgreSQL 16 (optional — only needed for DB features)
-- Docker & Docker Compose (optional)
 
 ### 1. Install Dependencies
 
@@ -188,20 +184,6 @@ python -m pytest tests/ -v
 
 ---
 
-## 🐳 Docker
-
-```bash
-# Build and run all services
-docker-compose up --build -d
-
-# Services:
-#   API        → http://localhost:8000
-#   Dashboard  → http://localhost:8501
-#   Airflow    → http://localhost:8080
-#   PostgreSQL → localhost:5432
-```
-
----
 
 ## 📊 Dataset
 

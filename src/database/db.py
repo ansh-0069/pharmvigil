@@ -11,6 +11,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Float,
+    ForeignKey,
     Integer,
     String,
     Text,
@@ -93,6 +94,53 @@ class SignalScore(Base):
     model_version = Column(String(32))
     scored_at = Column(DateTime, server_default=func.now())
 
+
+class Submission(Base):
+    """Regulatory submission tracking."""
+
+    __tablename__ = "submissions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(String(128), index=True, nullable=False)
+    submission_type = Column(String(32), nullable=False)  # PSUR / DSUR / PBRER / RMP
+    status = Column(String(32), default="PENDING")  # PENDING / SUBMITTED / APPROVED / REJECTED
+    due_date = Column(DateTime, nullable=False)
+    submitted_date = Column(DateTime, nullable=True)
+    complexity_weight = Column(Float, default=1.0)
+    risk_score = Column(Float, default=0.0)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class CapaCase(Base):
+    """Corrective and Preventive Action (CAPA) case."""
+
+    __tablename__ = "capa_cases"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(String(128), index=True, nullable=False)
+    title = Column(String(512), nullable=False)
+    description = Column(Text, nullable=True)
+    state = Column(String(32), default="OPEN")  # OPEN / INVESTIGATION / CORRECTIVE_ACTION / VERIFICATION / CLOSED
+    assigned_to = Column(String(256), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    due_date = Column(DateTime, nullable=True)
+
+
+class QCReport(Base):
+    """Quality Control inspection report."""
+
+    __tablename__ = "qc_reports"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(String(128), index=True, nullable=False)
+    total_inspections = Column(Integer, default=0)
+    defects_found = Column(Integer, default=0)
+    inspector = Column(String(256), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
 
 # ── Helpers ──────────────────────────────────────────
 def init_db() -> None:

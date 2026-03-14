@@ -1,4 +1,4 @@
-.PHONY: install test lint train serve dashboard generate-data docker-up docker-down clean
+.PHONY: install test lint train serve dashboard generate-data clean
 
 # ── Setup ─────────────────────────────────────────────
 install:
@@ -30,13 +30,6 @@ lint:
 	python -m py_compile src/models/predict.py
 	python -m py_compile src/nlp/entity_extraction.py
 	python -m py_compile src/features/feature_engineering.py
-
-# ── Docker ────────────────────────────────────────────
-docker-up:
-	docker-compose up --build -d
-
-docker-down:
-	docker-compose down -v
 
 # ── Cleanup ───────────────────────────────────────────
 clean:

@@ -7,24 +7,64 @@ POST /predict          — score a single drug-event pair
 GET  /top-signals      — return highest-risk pairs
 GET  /health           — liveness probe
 GET  /stats            — dataset statistics
+
+PV Compliance Endpoints
+-----------------------
+POST   /submissions           — create regulatory submission
+PATCH  /submissions/{id}/status — update submission status
+GET    /submissions/overdue   — list overdue submissions
+GET    /submissions/{id}/risk — get risk score
+POST   /capa                  — create CAPA case
+PATCH  /capa/{id}/status      — transition CAPA state
+GET    /capa/open             — list open CAPA cases
+GET    /capa/overdue          — list overdue CAPA cases
+GET    /audit/portfolio       — portfolio audit scores
+GET    /audit/{product_id}    — per-product audit metrics
 """
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import List, Optional
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from src.api.submission_routes import router as submission_router
+from src.api.capa_routes import router as capa_router
+from src.api.audit_routes import router as audit_router
 from src.models.predict import PredictionResult, get_predictor
+from src.services.submission_service import update_all_risk_scores
+
+# ── Scheduler ────────────────────────────────────────
+scheduler = BackgroundScheduler()
+scheduler.add_job(
+    update_all_risk_scores,
+    trigger="interval",
+    hours=24,
+    id="daily_risk_score_update",
+    replace_existing=True,
+)
+
+
+# ── Lifespan ─────────────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start scheduler on startup, shut down on exit."""
+    scheduler.start()
+    yield
+    scheduler.shutdown(wait=False)
+
 
 # ── App bootstrap ────────────────────────────────────
 app = FastAPI(
     title="AI Pharmacovigilance Intelligence Platform",
     description="Drug safety signal detection API powered by ML & NLP.",
-    version="1.0.0",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -34,6 +74,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Register Routers ────────────────────────────────
+app.include_router(submission_router)
+app.include_router(capa_router)
+app.include_router(audit_router)
 
 
 # ── Schemas ──────────────────────────────────────────
@@ -78,7 +123,7 @@ async def health():
     predictor = get_predictor()
     return HealthResponse(
         status="healthy",
-        version="1.0.0",
+        version="2.0.0",
         models_loaded=predictor.iso_model is not None,
     )
 
@@ -146,3 +191,4 @@ async def stats():
         top_drugs=top_drugs,
         top_events=top_events,
     )
+

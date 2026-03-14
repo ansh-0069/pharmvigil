@@ -67,11 +67,4 @@ jobs:
           DB_PASSWORD: pharma_pass
         run: python -m pytest tests/ -v --tb=short
 
-  docker-build:
-    runs-on: ubuntu-latest
-    needs: lint-and-test
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: docker build -t pharma-platform:${{ github.sha }} .
