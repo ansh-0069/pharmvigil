@@ -353,11 +353,6 @@ h3 {
     display: none;
 }
 
-/* Keep command menu and monitor at a clean fixed desktop width */
-div[data-testid="stVerticalBlock"]:has(.cmd-anchor) {
-    width: min(420px, 100%);
-}
-
 .app-nav {
     display: flex;
     gap: 0.35rem;
@@ -469,9 +464,6 @@ div[data-testid="stVerticalBlock"]:has(.cmd-anchor) {
 @media (max-width: 980px) {
     .block-container {
         padding: 0.25rem 0.85rem 4.5rem !important;
-    }
-    div[data-testid="stVerticalBlock"]:has(.cmd-anchor) {
-        width: 100%;
     }
     .app-nav {
         width: 100%;
