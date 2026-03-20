@@ -156,16 +156,18 @@ h3 {
 }
 
 .hero-title {
-    font-size: clamp(2rem, 5.7vw, 4.8rem);
-    line-height: 0.95;
+    font-size: clamp(1.8rem, 4.8vw, 4.2rem);
+    line-height: 0.98;
     color: #f1f5f9 !important;
     margin-bottom: 0.8rem;
+    max-width: 18ch;
+    text-wrap: balance;
 }
 
 .hero-sub {
     font-size: clamp(0.9rem, 1.35vw, 1.15rem);
     color: #a8b4c8;
-    max-width: 820px;
+    max-width: 68ch;
 }
 
 .hero-badge {
@@ -185,6 +187,38 @@ h3 {
 
 .kpi {
     padding: 1.05rem 0.95rem;
+    min-height: 108px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.kpi-icon {
+    font-size: 20px;
+    line-height: 1;
+    margin-bottom: 0.45rem;
+}
+
+.kpi-val {
+    font-size: clamp(1.15rem, 1.55vw, 1.95rem);
+    line-height: 1.1;
+}
+
+.kpi-lbl {
+    font-size: 0.74rem;
+}
+
+.pred-card {
+    padding: 1rem 0.95rem;
+    min-height: 104px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.pred-val {
+    font-size: clamp(1.25rem, 1.95vw, 2.6rem);
+    line-height: 1.04;
 }
 
 .kpi-val,
@@ -226,6 +260,14 @@ h3 {
     border: 1px solid var(--app-line-soft);
     background: rgba(15, 23, 36, 0.62);
     backdrop-filter: blur(8px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+}
+
+.stTabs [data-baseweb="tab-list"]::-webkit-scrollbar {
+    display: none;
 }
 
 .stTabs [data-baseweb="tab"] {
@@ -493,6 +535,18 @@ h3 {
     }
     .hero-title {
         line-height: 1.03;
+        max-width: 100%;
+        font-size: clamp(1.5rem, 8.5vw, 2.45rem);
+    }
+    .hero-sub {
+        font-size: 0.97rem;
+    }
+    .kpi {
+        min-height: 94px;
+    }
+    .pred-card {
+        min-height: 90px;
+        padding: 0.85rem 0.8rem;
     }
 }
 </style>
@@ -1390,9 +1444,9 @@ def main():
                             ],
                             threshold=dict(line=dict(color=C["rose"],width=3), thickness=0.8, value=risk),
                         ),
-                        title=dict(text=f"{p_drug.title()} + {p_event.title()}", font=dict(size=13)),
+                        title=dict(text=f"{p_drug.title()} · {p_event.title()}", font=dict(size=12, color="#94a3b8")),
                     ))
-                    st.plotly_chart(theme(fig_g, 280), use_container_width=True)
+                    st.plotly_chart(theme(fig_g, 310), use_container_width=True)
 
                     st.markdown(f"<p style='text-align:center;color:#55657d;font-size:0.72rem'>"
                                 f"API latency: {ms:.0f}ms</p>", unsafe_allow_html=True)
