@@ -19,6 +19,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+# Ensure repository root is importable on hosted environments (e.g., Streamlit Cloud).
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -27,7 +32,6 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 from capa_board import render_capa_board
-from src.models.predict import get_predictor
 import streamlit.components.v1 as components
 
 # ═══════════════════════════════════════════════════════
@@ -854,6 +858,7 @@ def bootstrap_demo_assets() -> None:
 def _local_predict(drug: str, event: str) -> Optional[dict]:
     """Fallback predictor for environments where the FastAPI service is unavailable."""
     try:
+        from src.models.predict import get_predictor
         pred = get_predictor().predict(drug_name=drug, adverse_event=event)
         return {
             "drug_name": pred.drug_name,
