@@ -20,21 +20,30 @@ from src.services.event_service import log_event
 CAPA_STATES = ["OPEN", "INVESTIGATION", "CORRECTIVE_ACTION", "VERIFICATION", "CLOSED"]
 
 CAPA_TRANSITIONS = [
-    {"trigger": "begin_investigation", "source": "OPEN", "dest": "INVESTIGATION"},
-    {"trigger": "begin_corrective_action", "source": "INVESTIGATION", "dest": "CORRECTIVE_ACTION"},
-    {"trigger": "begin_verification", "source": "CORRECTIVE_ACTION", "dest": "VERIFICATION"},
-    {"trigger": "close_case", "source": "VERIFICATION", "dest": "CLOSED"},
+    {"trigger": "begin_investigation",    "source": "OPEN",             "dest": "INVESTIGATION"},
+    {"trigger": "begin_corrective_action","source": "INVESTIGATION",    "dest": "CORRECTIVE_ACTION"},
+    {"trigger": "begin_verification",     "source": "CORRECTIVE_ACTION","dest": "VERIFICATION"},
+    {"trigger": "close_case",             "source": "VERIFICATION",     "dest": "CLOSED"},
 ]
 
 # Map desired target state → trigger name
 _STATE_TO_TRIGGER: dict[str, str] = {
-    "INVESTIGATION": "begin_investigation",
+    "INVESTIGATION":     "begin_investigation",
     "CORRECTIVE_ACTION": "begin_corrective_action",
-    "VERIFICATION": "begin_verification",
-    "CLOSED": "close_case",
+    "VERIFICATION":      "begin_verification",
+    "CLOSED":            "close_case",
+}
+
+# Valid next state for each current state
+_NEXT_STATE: dict[str, str] = {
+    "OPEN":             "INVESTIGATION",
+    "INVESTIGATION":    "CORRECTIVE_ACTION",
+    "CORRECTIVE_ACTION":"VERIFICATION",
+    "VERIFICATION":     "CLOSED",
 }
 
 OVERDUE_DAYS = 30
+VALID_PRIORITIES = {"CRITICAL", "HIGH", "MEDIUM", "LOW"}
 
 
 class CapaStateMachine:
@@ -63,6 +72,42 @@ class CapaStateMachine:
         getattr(self, trigger)()
 
 
+# ── Shared transition helper ─────────────────────────
+def _do_transition(case_id: int, target_state: str) -> dict:
+    """Core transition logic used by all named transition functions."""
+    target_state = target_state.upper()
+    with SessionLocal() as session:
+        case = session.query(CapaCase).filter(CapaCase.id == case_id).first()
+        if not case:
+            raise ValueError(f"CAPA case {case_id} not found")
+
+        sm = CapaStateMachine(initial_state=case.state)
+        try:
+            sm.transition_to(target_state)
+        except Exception as exc:
+            raise ValueError(
+                f"Invalid transition: {case.state} → {target_state}. {exc}"
+            ) from exc
+
+        old_state = case.state
+        case.state = target_state
+        case.updated_at = datetime.utcnow()
+        session.commit()
+        session.refresh(case)
+
+        logger.info(f"CAPA {case_id}: {old_state} → {target_state}")
+        log_event(
+            entity_type="capa",
+            entity_id=str(case_id),
+            event_type="status_change",
+            description=(
+                f"CAPA moved from {old_state} to {target_state} "
+                f"(case: '{case.title}', product: '{case.product_id}')"
+            ),
+        )
+        return _case_to_dict(case)
+
+
 # ── Service Functions ────────────────────────────────
 def create_capa_case(
     product_id: str,
@@ -70,16 +115,21 @@ def create_capa_case(
     description: Optional[str] = None,
     assigned_to: Optional[str] = None,
     due_date: Optional[datetime] = None,
+    priority: str = "MEDIUM",
 ) -> dict:
     """Create a new CAPA case in OPEN state."""
     if due_date is None:
         due_date = datetime.utcnow() + timedelta(days=OVERDUE_DAYS)
+    priority = priority.upper() if priority else "MEDIUM"
+    if priority not in VALID_PRIORITIES:
+        priority = "MEDIUM"
 
     case = CapaCase(
         product_id=product_id,
         title=title,
         description=description,
         state="OPEN",
+        priority=priority,
         assigned_to=assigned_to,
         due_date=due_date,
     )
@@ -93,49 +143,50 @@ def create_capa_case(
             entity_type="capa",
             entity_id=str(case.id),
             event_type="created",
-            description=f"CAPA case opened: '{title}' for product '{product_id}'",
+            description=(
+                f"CAPA case opened: '{title}' for product '{product_id}' "
+                f"[priority={priority}]"
+            ),
         )
         return _case_to_dict(case)
 
 
 def update_capa_status(case_id: int, new_state: str) -> dict:
-    """
-    Transition a CAPA case to a new state.
+    """Generic transition — validates via state machine."""
+    return _do_transition(case_id, new_state)
 
-    Uses the state machine to validate the transition is legal.
-    """
-    new_state = new_state.upper()
 
+# ── Named transition functions (explicit API surface) ─
+def transition_to_investigation(capa_id: int) -> dict:
+    """Move a CAPA case from OPEN → INVESTIGATION."""
+    return _do_transition(capa_id, "INVESTIGATION")
+
+
+def transition_to_corrective_action(capa_id: int) -> dict:
+    """Move a CAPA case from INVESTIGATION → CORRECTIVE_ACTION."""
+    return _do_transition(capa_id, "CORRECTIVE_ACTION")
+
+
+def transition_to_verification(capa_id: int) -> dict:
+    """Move a CAPA case from CORRECTIVE_ACTION → VERIFICATION."""
+    return _do_transition(capa_id, "VERIFICATION")
+
+
+def close_capa_case(capa_id: int) -> dict:
+    """Move a CAPA case from VERIFICATION → CLOSED."""
+    return _do_transition(capa_id, "CLOSED")
+
+
+# ── Query Functions ───────────────────────────────────
+def get_all_capa_cases() -> List[dict]:
+    """Return ALL CAPA cases (including CLOSED) ordered by created_at desc."""
     with SessionLocal() as session:
-        case = session.query(CapaCase).filter(CapaCase.id == case_id).first()
-        if not case:
-            raise ValueError(f"CAPA case {case_id} not found")
-
-        # Validate transition via state machine
-        sm = CapaStateMachine(initial_state=case.state)
-        try:
-            sm.transition_to(new_state)
-        except Exception as exc:
-            raise ValueError(
-                f"Invalid transition: {case.state} → {new_state}. {exc}"
-            ) from exc
-
-        old_state = case.state
-        case.state = new_state
-        case.updated_at = datetime.utcnow()
-        session.commit()
-        session.refresh(case)
-        logger.info(f"CAPA {case_id}: {old_state} → {new_state}")
-        log_event(
-            entity_type="capa",
-            entity_id=str(case_id),
-            event_type="status_change",
-            description=(
-                f"CAPA status changed: {old_state} → {new_state} "
-                f"(case: '{case.title}', product: '{case.product_id}')"
-            ),
+        rows = (
+            session.query(CapaCase)
+            .order_by(CapaCase.created_at.desc())
+            .all()
         )
-        return _case_to_dict(case)
+        return [_case_to_dict(r) for r in rows]
 
 
 def get_open_capa_cases() -> List[dict]:
@@ -171,13 +222,15 @@ def get_overdue_capa_cases() -> List[dict]:
 # ── Helpers ──────────────────────────────────────────
 def _case_to_dict(case: CapaCase) -> dict:
     return {
-        "id": case.id,
-        "product_id": case.product_id,
-        "title": case.title,
+        "id":          case.id,
+        "product_id":  case.product_id,
+        "title":       case.title,
         "description": case.description,
-        "state": case.state,
+        "state":       case.state,
+        "priority":    getattr(case, "priority", "MEDIUM") or "MEDIUM",
         "assigned_to": case.assigned_to,
-        "created_at": case.created_at.isoformat() if case.created_at else None,
-        "updated_at": case.updated_at.isoformat() if case.updated_at else None,
-        "due_date": case.due_date.isoformat() if case.due_date else None,
+        "created_at":  case.created_at.isoformat() if case.created_at else None,
+        "updated_at":  case.updated_at.isoformat() if case.updated_at else None,
+        "due_date":    case.due_date.isoformat() if case.due_date else None,
+        "next_state":  _NEXT_STATE.get(case.state),
     }

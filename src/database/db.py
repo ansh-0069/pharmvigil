@@ -142,6 +142,7 @@ class CapaCase(Base):
     title = Column(String(512), nullable=False)
     description = Column(Text, nullable=True)
     state = Column(String(32), default="OPEN")  # OPEN / INVESTIGATION / CORRECTIVE_ACTION / VERIFICATION / CLOSED
+    priority = Column(String(16), default="MEDIUM")  # CRITICAL / HIGH / MEDIUM / LOW
     assigned_to = Column(String(256), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

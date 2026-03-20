@@ -23,6 +23,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import requests
 import streamlit as st
+from capa_board import render_capa_board
 import streamlit.components.v1 as components
 
 # ═══════════════════════════════════════════════════════
@@ -35,7 +36,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-API_BASE = "http://localhost:8000"
+API_BASE = "http://localhost:8001"
 DATA_DIR = Path("data")
 SCORES_PATH = DATA_DIR / "processed" / "signal_scores.csv"
 RAW_PATH = DATA_DIR / "raw" / "adverse_events.csv"
@@ -67,197 +68,635 @@ C = {
 ALERT_MAP = {"critical": C["critical"], "high": C["high"], "medium": C["medium"], "low": C["low"]}
 
 
+APP_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+    --app-bg: #0b111b;
+    --app-bg-soft: #121a28;
+    --app-panel: #0f1724;
+    --app-line: #334155;
+    --app-line-soft: rgba(71, 85, 105, 0.45);
+    --app-text: #e2e8f0;
+    --app-muted: #94a3b8;
+    --app-accent: #7dd3fc;
+}
+
+/* Hide Streamlit chrome */
+header[data-testid="stHeader"],
+div[data-testid="stToolbar"],
+div[data-testid="stDecoration"],
+div[data-testid="stStatusWidget"],
+#MainMenu,
+footer,
+section[data-testid="stSidebar"] {
+    display: none !important;
+}
+
+/* Full bleed canvas */
+html, body, [data-testid="stAppViewContainer"], .stApp {
+    background:
+        radial-gradient(1100px 560px at 2% -15%, rgba(56, 189, 248, 0.14), transparent 58%),
+        radial-gradient(850px 420px at 98% 3%, rgba(14, 165, 233, 0.1), transparent 62%),
+        linear-gradient(180deg, #0b111b 0%, #0c1320 42%, #0a1019 100%) !important;
+    color: var(--app-text) !important;
+    font-family: 'Manrope', sans-serif !important;
+}
+
+.block-container { max-width: 100vw !important; padding: 0.5rem 3.8vw 7rem !important; }
+
+/* Typography direction */
+h1, h2, h4, h5 {
+    color: var(--app-text) !important;
+    letter-spacing: -0.03em;
+}
+
+h1, .hero-title {
+    font-family: 'Space Grotesk', sans-serif !important;
+}
+
+h3 {
+    color: #94A3B8 !important;
+    font-size: 12px !important;
+    letter-spacing: 2px !important;
+    text-transform: uppercase !important;
+    font-weight: 700 !important;
+    margin-bottom: 0.7rem !important;
+}
+
+/* Hero refresh */
+.hero {
+    background: linear-gradient(130deg, rgba(15, 23, 36, 0.9), rgba(13, 20, 31, 0.88));
+    border: 1px solid var(--app-line-soft);
+    border-radius: 26px;
+    padding: clamp(1.3rem, 2vw, 2.1rem) clamp(1.1rem, 3vw, 2.6rem);
+    margin: 0.4rem 0 1.2rem;
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(8px);
+}
+
+.hero::after {
+    content: '';
+    position: absolute;
+    right: -120px;
+    top: -90px;
+    width: 340px;
+    height: 260px;
+    background: radial-gradient(circle, rgba(125, 211, 252, 0.2), transparent 68%);
+}
+
+.hero-title {
+    font-size: clamp(2rem, 5.7vw, 4.8rem);
+    line-height: 0.95;
+    color: #f1f5f9 !important;
+    margin-bottom: 0.8rem;
+}
+
+.hero-sub {
+    font-size: clamp(0.9rem, 1.35vw, 1.15rem);
+    color: #a8b4c8;
+    max-width: 820px;
+}
+
+.hero-badge {
+    border-radius: 999px;
+    border: 1px solid rgba(125, 211, 252, 0.32);
+    color: #b8ebff;
+    background: rgba(56, 189, 248, 0.14);
+}
+
+/* Existing cards upgraded */
+.kpi, .panel, .pred-card {
+    border-radius: 16px !important;
+    border: 1px solid var(--app-line-soft) !important;
+    background: linear-gradient(180deg, rgba(15, 23, 36, 0.86), rgba(12, 18, 28, 0.85)) !important;
+    box-shadow: none !important;
+}
+
+.kpi {
+    padding: 1.05rem 0.95rem;
+}
+
+.kpi-val,
+.pred-val,
+.sev-score {
+    font-family: 'IBM Plex Mono', monospace !important;
+}
+
+.panel h4,
+.kpi-lbl,
+.pred-lbl {
+    color: var(--app-muted) !important;
+    letter-spacing: 0.12em !important;
+}
+
+.kpi-icon,
+.sev-drug,
+.sev-label,
+.pred-val,
+.kpi-val {
+    color: #e2e8f0 !important;
+}
+
+.panel span,
+.panel p,
+.panel div {
+    color: #b8c2d3 !important;
+}
+
+.sev-row {
+    background: rgba(15, 23, 36, 0.65) !important;
+    border-left-width: 4px;
+}
+
+/* Tabs become premium segmented rail */
+.stTabs [data-baseweb="tab-list"] {
+    padding: 0.4rem;
+    border-radius: 16px;
+    border: 1px solid var(--app-line-soft);
+    background: rgba(15, 23, 36, 0.62);
+    backdrop-filter: blur(8px);
+}
+
+.stTabs [data-baseweb="tab"] {
+    border-radius: 12px;
+    color: #8ea0ba;
+    font-weight: 600;
+    font-size: 0.86rem;
+    padding: 0.58rem 0.9rem;
+}
+
+.stTabs [aria-selected="true"] {
+    background: linear-gradient(120deg, rgba(14, 165, 233, 0.2), rgba(56, 189, 248, 0.24)) !important;
+    color: #d5f3ff !important;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
+/* Native widgets re-skin */
+.stButton > button,
+.stDownloadButton > button {
+    border-radius: 999px !important;
+    border: 1px solid rgba(56, 189, 248, 0.45) !important;
+    background: linear-gradient(120deg, rgba(14, 116, 144, 0.38), rgba(14, 165, 233, 0.2)) !important;
+    color: #d9f5ff !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.02em;
+}
+
+.stButton > button:hover,
+.stDownloadButton > button:hover {
+    transform: translateY(-1px);
+    border-color: rgba(125, 211, 252, 0.88) !important;
+    background: linear-gradient(120deg, rgba(14, 116, 144, 0.52), rgba(14, 165, 233, 0.32)) !important;
+}
+
+.stSelectbox [data-baseweb="select"],
+.stMultiSelect [data-baseweb="select"],
+.stTextInput input,
+.stDateInput input,
+.stTextArea textarea,
+.stSlider [data-baseweb="slider"] {
+    border-radius: 14px !important;
+    border-color: rgba(71, 85, 105, 0.6) !important;
+    background: rgba(15, 23, 36, 0.9) !important;
+    color: #d9e2ef !important;
+}
+
+.stMultiSelect [data-baseweb="tag"] {
+    background: rgba(30, 41, 59, 0.9) !important;
+    color: #c8d4e7 !important;
+    border: 1px solid rgba(71, 85, 105, 0.8) !important;
+}
+
+[data-testid="stDataFrame"],
+[data-testid="stMetric"],
+[data-testid="stPlotlyChart"],
+.stAlert {
+    border-radius: 12px !important;
+    border: 1px solid var(--app-line-soft) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+/* Plotly charts should float directly on the page */
+[data-testid="stPlotlyChart"] > div,
+[data-testid="stPlotlyChart"] .js-plotly-plot,
+[data-testid="stPlotlyChart"] .plot-container,
+[data-testid="stPlotlyChart"] .svg-container {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+/* Minimalist financial-ledger dataframe styling */
+[data-testid="stDataFrame"] [role="grid"],
+[data-testid="stTable"] table {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+[data-testid="stDataFrame"] [role="columnheader"],
+[data-testid="stTable"] thead th {
+    background: transparent !important;
+    color: #94A3B8 !important;
+    font-size: 11px !important;
+    letter-spacing: 2px !important;
+    text-transform: uppercase !important;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.8) !important;
+    border-right: none !important;
+}
+
+[data-testid="stDataFrame"] [role="gridcell"],
+[data-testid="stTable"] tbody td {
+    background: transparent !important;
+    color: #d9e2ef !important;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.45) !important;
+    border-right: none !important;
+    font-size: 12px !important;
+}
+
+[data-testid="stDataFrame"] [role="row"]:hover [role="gridcell"],
+[data-testid="stTable"] tbody tr:hover td {
+    background: rgba(30, 41, 59, 0.28) !important;
+}
+
+/* Flat metric cards */
+[data-testid="stMetric"] {
+    background: #121a28 !important;
+    border: 1px solid #334155 !important;
+    border-radius: 10px !important;
+    padding: 0.8rem 0.9rem !important;
+    box-shadow: none !important;
+}
+
+[data-testid="stMetric"] * {
+    box-shadow: none !important;
+}
+
+[data-testid="stMetricLabel"] {
+    color: #94A3B8 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 2px !important;
+    font-size: 11px !important;
+}
+
+[data-testid="stMetricValue"] {
+    color: #e2e8f0 !important;
+    font-family: 'IBM Plex Mono', monospace !important;
+}
+
+/* Floating command menu and nav (safe layout version) */
+.cmd-anchor,
+.nav-anchor {
+    display: none;
+}
+
+/* Keep command menu and monitor at a clean fixed desktop width */
+div[data-testid="stVerticalBlock"]:has(.cmd-anchor) {
+    width: min(420px, 100%);
+}
+
+.app-nav {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0.35rem;
+    z-index: 20;
+    margin: 0.25rem 0 0.7rem;
+    width: fit-content;
+    padding: 0.48rem 0.72rem;
+    border-radius: 999px;
+    border: 1px solid var(--app-line-soft);
+    background: rgba(15, 23, 36, 0.72);
+    backdrop-filter: blur(10px);
+}
+
+.app-nav a {
+    color: #b9c7da;
+    text-decoration: none;
+    border-radius: 999px;
+    padding: 0.34rem 0.7rem;
+    border: 1px solid rgba(71, 85, 105, 0.7);
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.app-nav a:hover {
+    color: #d9f5ff;
+    border-color: rgba(56, 189, 248, 0.75);
+    background: rgba(14, 165, 233, 0.2);
+}
+
+.cmd-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    color: #94A3B8;
+    letter-spacing: 0.16em;
+    margin: 0.45rem 0;
+}
+
+/* Command menu monitor block */
+.sys-monitor {
+    border: 1px solid rgba(71, 85, 105, 0.55);
+    border-radius: 14px;
+    background: rgba(15, 23, 36, 0.65);
+    padding: 0.85rem 0.95rem;
+    margin-top: 0.5rem;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.sys-monitor-title {
+    color: #94A3B8;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 700;
+    margin-bottom: 0.65rem;
+}
+
+.sys-monitor-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0.36rem 0;
+    color: #d9e2ef;
+    font-size: 0.82rem;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.45);
+}
+
+.sys-monitor-row:last-child {
+    border-bottom: none;
+}
+
+.sys-monitor-left {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #c7d2e2;
+}
+
+.sys-monitor-right {
+    color: #8ea0ba;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.76rem;
+    white-space: nowrap;
+}
+
+.stCode, .stMarkdown code {
+    background: rgba(30, 41, 59, 0.6) !important;
+    color: #b7c6da !important;
+}
+
+/* Scroll reveal animation */
+.reveal-item {
+    opacity: 0;
+    transform: translate3d(0, 28px, 0) scale(0.985);
+    transition: opacity 0.9s cubic-bezier(0.2, 0.65, 0.2, 1), transform 0.9s cubic-bezier(0.2, 0.65, 0.2, 1);
+    will-change: opacity, transform;
+}
+
+.reveal-item.reveal-live {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+}
+
+@media (max-width: 980px) {
+    .block-container {
+        padding: 0.25rem 0.85rem 4.5rem !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.cmd-anchor) {
+        width: 100%;
+    }
+    .app-nav {
+        width: 100%;
+        border-radius: 16px;
+    }
+    .sys-monitor {
+        padding: 0.65rem 0.72rem;
+        border-radius: 12px;
+    }
+    .sys-monitor-title {
+        margin-bottom: 0.45rem;
+    }
+    .sys-monitor-row {
+        padding: 0.24rem 0;
+        font-size: 0.78rem;
+    }
+    .sys-monitor-right {
+        font-size: 0.72rem;
+    }
+    .hero-title {
+        line-height: 1.03;
+    }
+}
+</style>
+"""
+
+
+SCROLL_OBSERVER_JS = """
+<script>
+(function () {
+  const doc = window.parent.document;
+  if (!doc || doc.documentElement.dataset.scrollyReady === '1') return;
+  doc.documentElement.dataset.scrollyReady = '1';
+
+  const pickTargets = () => {
+    const targets = [];
+    const selectors = [
+      '[data-testid="stPlotlyChart"]',
+      '[data-testid="stDataFrame"]',
+      '[data-testid="stMetric"]',
+      '[data-testid="stAlert"]',
+      '.hero', '.kpi', '.panel', '.pred-card', '.sev-row', '.stTabs'
+    ];
+
+    selectors.forEach((sel) => {
+      doc.querySelectorAll(sel).forEach((el) => {
+        if (!el.closest('section[data-testid="stSidebar"]')) targets.push(el);
+      });
+    });
+
+    doc.querySelectorAll('[data-testid="stVerticalBlock"] > div').forEach((el) => {
+      if (!el.querySelector('[data-testid="stHorizontalBlock"]') && !el.closest('section[data-testid="stSidebar"]')) {
+        targets.push(el);
+      }
+    });
+
+    return [...new Set(targets)].filter((el) => el.offsetHeight > 20);
+  };
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('reveal-live');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.14, rootMargin: '0px 0px -8% 0px' });
+
+  const arm = () => {
+    pickTargets().forEach((el) => {
+      if (!el.classList.contains('reveal-item')) {
+        el.classList.add('reveal-item');
+        observer.observe(el);
+      }
+    });
+  };
+
+  arm();
+  const mo = new MutationObserver(() => arm());
+  mo.observe(doc.body, { childList: true, subtree: true });
+})();
+</script>
+"""
+
+
+NAV_TABS_JS = """
+<script>
+(function () {
+    const doc = window.parent.document;
+    if (!doc || doc.documentElement.dataset.navTabsReady === '1') return;
+    doc.documentElement.dataset.navTabsReady = '1';
+
+    const bindNav = () => {
+        const nav = doc.querySelector('.app-nav');
+        if (!nav || nav.dataset.bound === '1') return;
+        nav.dataset.bound = '1';
+
+        nav.addEventListener('click', (event) => {
+            const link = event.target.closest('a[data-tab-index]');
+            if (!link) return;
+            event.preventDefault();
+
+            const idx = Number(link.getAttribute('data-tab-index'));
+            if (Number.isNaN(idx)) return;
+
+            const tabButtons = doc.querySelectorAll('.stTabs [data-baseweb="tab-list"] [data-baseweb="tab"]');
+            if (idx < 0 || idx >= tabButtons.length) return;
+
+            tabButtons[idx].click();
+            const tabsRoot = doc.querySelector('.stTabs');
+            if (tabsRoot) {
+                tabsRoot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    };
+
+    bindNav();
+    const mo = new MutationObserver(() => bindNav());
+    mo.observe(doc.body, { childList: true, subtree: true });
+})();
+</script>
+"""
+
+
 # ═══════════════════════════════════════════════════════
 #  CSS INJECTION — Enterprise Dark Theme
 # ═══════════════════════════════════════════════════════
 def inject_css():
-    st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
-
-    /* ── Reset ─────────────────────────────── */
-    *, html, body, [class*="st-"] { font-family: 'Inter', system-ui, sans-serif !important; }
-    .main { background: #060a13; }
-    .block-container { padding: 1rem 2rem 2rem !important; max-width: 1440px; }
-    hr { border-color: rgba(56,119,246,0.08) !important; margin: 20px 0 !important; }
-
-    /* ── Sidebar ───────────────────────────── */
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #070c18 0%, #0d1525 100%);
-        border-right: 1px solid rgba(56,119,246,0.08);
-    }
-    section[data-testid="stSidebar"] .stMarkdown { color: #8896b0; }
-
-    /* ── Headings ──────────────────────────── */
-    h1 { color: #e8ecf4 !important; font-weight: 800 !important; font-size: 1.55rem !important; letter-spacing: -0.03em; }
-    h2 { color: #d0d8e8 !important; font-weight: 700 !important; font-size: 1.15rem !important; }
-    h3 { color: #b0bcd0 !important; font-weight: 600 !important; font-size: 1rem !important; }
-
-    /* ── Hero ───────────────────────────────── */
-    .hero {
-        background: linear-gradient(135deg, #0c1424 0%, #142042 40%, #0f1832 100%);
-        border: 1px solid rgba(56,119,246,0.12);
-        border-radius: 14px; padding: 22px 30px; margin-bottom: 20px;
-        position: relative; overflow: hidden;
-    }
-    .hero::before {
-        content: ''; position: absolute; top: -40px; right: -20px;
-        width: 200px; height: 200px;
-        background: radial-gradient(circle, rgba(56,119,246,0.06) 0%, transparent 70%);
-        border-radius: 50%;
-    }
-    .hero-title {
-        font-size: 1.35rem; font-weight: 800; color: #e8ecf4;
-        letter-spacing: -0.03em; margin: 0 0 4px 0;
-    }
-    .hero-sub {
-        font-size: 0.82rem; color: #6b7fa0; line-height: 1.5;
-        margin: 0 0 8px 0; max-width: 700px;
-    }
-    .hero-badge {
-        display: inline-block;
-        background: rgba(56,119,246,0.1); color: #6da0ff;
-        padding: 3px 12px; border-radius: 14px;
-        font-size: 0.67rem; font-weight: 700; letter-spacing: 0.06em;
-        border: 1px solid rgba(56,119,246,0.2);
-        text-transform: uppercase;
-    }
-
-    /* ── KPI Card ──────────────────────────── */
-    .kpi {
-        background: linear-gradient(135deg, #0d1320 0%, #111d32 100%);
-        border: 1px solid rgba(56,119,246,0.08); border-radius: 12px;
-        padding: 18px 20px; text-align: center;
-        transition: all 0.35s cubic-bezier(0.4,0,0.2,1);
-        position: relative; overflow: hidden;
-    }
-    .kpi::after {
-        content: ''; position: absolute; top: 0; left: 0; right: 0;
-        height: 2px; border-radius: 12px 12px 0 0;
-    }
-    .kpi:hover {
-        border-color: rgba(56,119,246,0.25);
-        transform: translateY(-3px);
-        box-shadow: 0 12px 32px rgba(56,119,246,0.06);
-    }
-    .kpi-icon { font-size: 22px; margin-bottom: 6px; opacity: 0.9; }
-    .kpi-val {
-        font-size: 1.9rem; font-weight: 900; letter-spacing: -0.04em;
-        line-height: 1; margin-bottom: 3px;
-        font-family: 'JetBrains Mono', monospace !important;
-    }
-    .kpi-lbl {
-        font-size: 0.68rem; color: #6b7fa0; font-weight: 600;
-        text-transform: uppercase; letter-spacing: 0.1em;
-    }
-    .kpi-blue::after  { background: linear-gradient(90deg, #3877f6, #6da0ff); }
-    .kpi-blue .kpi-val { color: #6da0ff; }
-    .kpi-green::after  { background: linear-gradient(90deg, #10b981, #34d399); }
-    .kpi-green .kpi-val { color: #34d399; }
-    .kpi-amber::after  { background: linear-gradient(90deg, #f5a623, #fbbf24); }
-    .kpi-amber .kpi-val { color: #fbbf24; }
-    .kpi-rose::after   { background: linear-gradient(90deg, #f43f5e, #fb7185); }
-    .kpi-rose .kpi-val  { color: #fb7185; }
-
-    /* ── Panel card ────────────────────────── */
-    .panel {
-        background: #0d1320; border: 1px solid rgba(56,119,246,0.08);
-        border-radius: 12px; padding: 20px 22px; margin-bottom: 12px;
-    }
-    .panel h4 {
-        font-size: 0.85rem !important; color: #8896b0 !important;
-        font-weight: 600 !important; margin: 0 0 12px 0 !important;
-        text-transform: uppercase; letter-spacing: 0.06em;
-    }
-
-    /* ── Severity rows ─────────────────────── */
-    .sev-row {
-        display: flex; align-items: center; gap: 10px;
-        padding: 8px 12px; border-radius: 8px; margin-bottom: 4px;
-        background: rgba(17,24,39,0.5);
-        border-left: 3px solid transparent;
-        transition: background 0.2s;
-    }
-    .sev-row:hover { background: rgba(56,119,246,0.04); }
-    .sev-critical { border-left-color: #ef4444; }
-    .sev-high     { border-left-color: #f97316; }
-    .sev-medium   { border-left-color: #eab308; }
-    .sev-low      { border-left-color: #22c55e; }
-    .sev-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; min-width: 65px; }
-    .sev-drug  { font-size: 0.82rem; color: #d0d8e8; flex: 1; }
-    .sev-score { font-size: 0.82rem; font-family: 'JetBrains Mono', monospace !important; }
-
-    /* ── Status dot ────────────────────────── */
-    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-    .dot-green { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.4); }
-    .dot-amber { background: #f5a623; box-shadow: 0 0 6px rgba(245,166,35,0.4); }
-    .dot-red   { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.4); }
-
-    /* ── Pred card ─────────────────────────── */
-    .pred-card {
-        background: linear-gradient(135deg, #0d1320 0%, #142042 100%);
-        border: 1px solid rgba(56,119,246,0.12); border-radius: 14px;
-        padding: 24px; text-align: center;
-    }
-    .pred-val {
-        font-size: 2.8rem; font-weight: 900; letter-spacing: -0.04em;
-        font-family: 'JetBrains Mono', monospace !important; line-height: 1;
-    }
-    .pred-lbl {
-        font-size: 0.72rem; color: #6b7fa0; font-weight: 600;
-        text-transform: uppercase; letter-spacing: 0.1em; margin-top: 5px;
-    }
-
-    /* ── Tabs ──────────────────────────────── */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2px; background: rgba(13,19,32,0.6);
-        border-radius: 10px; padding: 3px; border: 1px solid rgba(56,119,246,0.06);
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 7px; padding: 8px 16px; color: #6b7fa0; font-weight: 500; font-size: 0.85rem;
-    }
-    .stTabs [aria-selected="true"] {
-        background: rgba(56,119,246,0.1) !important; color: #6da0ff !important;
-    }
-
-    /* ── Scrollbar ─────────────────────────── */
-    ::-webkit-scrollbar { width: 5px; }
-    ::-webkit-scrollbar-track { background: #060a13; }
-    ::-webkit-scrollbar-thumb { background: #1c2740; border-radius: 4px; }
-
-    /* ── Download btn ──────────────────────── */
-    .stDownloadButton > button {
-        background: rgba(56,119,246,0.1) !important; color: #6da0ff !important;
-        border: 1px solid rgba(56,119,246,0.2) !important; border-radius: 8px !important;
-        font-weight: 600 !important; font-size: 0.8rem !important;
-    }
-    .stDownloadButton > button:hover {
-        background: rgba(56,119,246,0.2) !important;
-    }
-
-    /* ── Inputs ────────────────────────────── */
-    .stSelectbox > div > div, .stMultiSelect > div > div, .stTextInput > div > div {
-        background: #0d1320 !important; border-color: rgba(56,119,246,0.12) !important;
-        border-radius: 8px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    st.markdown(APP_CSS, unsafe_allow_html=True)
 
 
-def api_predict(drug: str, event: str) -> tuple[dict, float]:
-    start = time.time()
-    try:
-        r = requests.post(f"{API_URL}/predict", json={"drug_name":drug, "adverse_event":event}, timeout=5)
-        js = r.json() if r.status_code == 200 else {}
-        return js, (time.time() - start)*1000
-    except requests.RequestException:
-        return {}, (time.time() - start)*1000
+def inject_scroll_observer():
+    components.html(SCROLL_OBSERVER_JS, height=0, width=0)
+
+
+def inject_nav_tab_clicks():
+    components.html(NAV_TABS_JS, height=0, width=0)
+
+
+def render_shell_navigation():
+    st.markdown('<div class="nav-anchor"></div>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="app-nav">
+            <a href="#" data-tab-index="0">Signals</a>
+            <a href="#" data-tab-index="1">Risk</a>
+            <a href="#" data-tab-index="2">Trends</a>
+            <a href="#" data-tab-index="3">Network</a>
+            <a href="#" data-tab-index="4">Map</a>
+            <a href="#" data-tab-index="5">Predict</a>
+            <a href="#" data-tab-index="6">Audit</a>
+            <a href="#" data-tab-index="7">Activity</a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_command_menu(raw: pd.DataFrame, has_r: bool):
+    st.markdown('<div class="cmd-anchor"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="cmd-title">Command Menu</div>', unsafe_allow_html=True)
+
+    drug_opts = sorted(raw["drug_name"].dropna().unique().tolist()) if has_r and "drug_name" in raw.columns else []
+    sel_drugs = st.multiselect("Drug Filters", drug_opts, default=[], key="sb_drugs")
+
+    event_opts = sorted(raw["adverse_event"].dropna().unique().tolist()) if has_r and "adverse_event" in raw.columns else []
+    sel_events = st.multiselect("Event Filters", event_opts, default=[], key="sb_events")
+
+    risk_thresh = st.slider("Risk Threshold", 0.0, 1.0, 0.6, 0.05, key="sb_thresh")
+
+    if has_r and "report_date" in raw.columns:
+        mn, mx = raw["report_date"].min(), raw["report_date"].max()
+        if pd.notna(mn) and pd.notna(mx):
+            date_range = st.date_input(
+                "Date Window",
+                value=(mn.date(), mx.date()),
+                min_value=mn.date(),
+                max_value=mx.date(),
+                key="sb_date",
+            )
+        else:
+            date_range = None
+    else:
+        date_range = None
+
+    api_ok, api_ms = api_health()
+    dot = "dot-green" if api_ok else "dot-red"
+    label = "Operational" if api_ok else "Offline"
+
+    model_exists = Path("models/xgboost_classifier.joblib").exists()
+    mdot = "dot-green" if model_exists else "dot-amber"
+    mlbl = "Loaded" if model_exists else "Not trained"
+
+    latest_text = "Unknown"
+    if has_r and "report_date" in raw.columns:
+        latest = raw["report_date"].max()
+        if pd.notna(latest):
+            latest_text = latest.strftime("%Y-%m-%d")
+
+    monitor_html = f"""
+    <div class="sys-monitor">
+        <div class="sys-monitor-title">System Monitor</div>
+        <div class="sys-monitor-row">
+            <span class="sys-monitor-left"><span class="dot {dot}"></span>API: {label}</span>
+            <span class="sys-monitor-right">{api_ms:.0f}ms</span>
+        </div>
+        <div class="sys-monitor-row">
+            <span class="sys-monitor-left"><span class="dot {mdot}"></span>Model: {mlbl}</span>
+            <span class="sys-monitor-right">ready</span>
+        </div>
+        <div class="sys-monitor-row">
+            <span class="sys-monitor-left"><span class="dot dot-green"></span>Data: {latest_text}</span>
+            <span class="sys-monitor-right">latest</span>
+        </div>
+    </div>
+    """
+    st.markdown(monitor_html, unsafe_allow_html=True)
+
+    return sel_drugs, sel_events, risk_thresh, date_range
+
 
 @st.cache_data(ttl=30)
 def fetch_events(limit: int = 50) -> list:
     try:
-        r = requests.get(f"{API_URL}/api/v1/events/recent?limit={limit}", timeout=5)
+        r = requests.get(f"{API_BASE}/api/v1/events/recent?limit={limit}", timeout=5)
         return r.json() if r.status_code == 200 else []
     except requests.RequestException:
         return []
@@ -265,7 +704,7 @@ def fetch_events(limit: int = 50) -> list:
 @st.cache_data(ttl=30)
 def fetch_open_capas() -> list:
     try:
-        r = requests.get(f"{API_URL}/capa/open", timeout=5)
+        r = requests.get(f"{API_BASE}/capa/open", timeout=5)
         return r.json() if r.status_code == 200 else []
     except requests.RequestException:
         return []
@@ -273,7 +712,7 @@ def fetch_open_capas() -> list:
 @st.cache_data(ttl=30)
 def fetch_overdue_submissions() -> list:
     try:
-        r = requests.get(f"{API_URL}/submissions/overdue", timeout=5)
+        r = requests.get(f"{API_BASE}/submissions/overdue", timeout=5)
         return r.json() if r.status_code == 200 else []
     except requests.RequestException:
         return []
@@ -281,7 +720,7 @@ def fetch_overdue_submissions() -> list:
 @st.cache_data(ttl=60)
 def fetch_audit_portfolio() -> list:
     try:
-        r = requests.get(f"{API_URL}/audit/portfolio", timeout=5)
+        r = requests.get(f"{API_BASE}/audit/portfolio", timeout=5)
         return r.json() if r.status_code == 200 else []
     except requests.RequestException:
         return []
@@ -290,17 +729,31 @@ def fetch_audit_portfolio() -> list:
 # ═══════════════════════════════════════════════════════
 _PLOTLY_BASE = dict(
     paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(13,19,32,0.4)",
-    font=dict(family="Inter, system-ui, sans-serif", color=C["text"], size=12),
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(family="Manrope, system-ui, sans-serif", color="#d9e2ef", size=12),
     margin=dict(l=16, r=16, t=44, b=16),
-    xaxis=dict(gridcolor="rgba(28,39,64,0.4)", zerolinecolor="rgba(28,39,64,0.4)"),
-    yaxis=dict(gridcolor="rgba(28,39,64,0.4)", zerolinecolor="rgba(28,39,64,0.4)"),
+    xaxis=dict(
+        showgrid=False,
+        zeroline=False,
+        showline=False,
+        tickfont=dict(color="#cbd5e1", size=11),
+        titlefont=dict(color="#94a3b8", size=11),
+    ),
+    yaxis=dict(
+        showgrid=False,
+        zeroline=False,
+        showline=False,
+        tickfont=dict(color="#cbd5e1", size=11),
+        titlefont=dict(color="#94a3b8", size=11),
+    ),
     legend=dict(bgcolor="rgba(0,0,0,0)", borderwidth=0, font=dict(size=11)),
-    hoverlabel=dict(bgcolor=C["bg_elevated"], font_size=12, bordercolor=C["border"]),
+    hoverlabel=dict(bgcolor="rgba(15,23,36,0.98)", font_size=12, bordercolor="#334155"),
 )
 
 def theme(fig: go.Figure, h: int = 420) -> go.Figure:
     fig.update_layout(**_PLOTLY_BASE, height=h)
+    fig.update_xaxes(showgrid=False, zeroline=False, showline=False)
+    fig.update_yaxes(showgrid=False, zeroline=False, showline=False)
     return fig
 
 
@@ -345,18 +798,26 @@ def sev_row(level: str, drug: str, event: str, score: float):
     </div>""", unsafe_allow_html=True)
 
 
-def api_predict(drug: str, event: str) -> tuple[Optional[dict], float]:
-    """Returns (result_dict, response_time_ms)."""
+def api_predict(drug: str, event: str) -> tuple[Optional[dict], float, Optional[str]]:
+    """Returns (result_dict, response_time_ms, error_message)."""
     t0 = time.time()
     try:
         r = requests.post(f"{API_BASE}/predict",
                           json={"drug_name": drug, "adverse_event": event}, timeout=30)
         elapsed = (time.time() - t0) * 1000
         if r.status_code == 200:
-            return r.json(), elapsed
+            return r.json(), elapsed, None
+        msg = f"Prediction API returned {r.status_code}."
+        try:
+            detail = r.json().get("detail")
+            if detail:
+                msg = f"{msg} {detail}"
+        except Exception:
+            pass
+        return None, elapsed, msg
     except (requests.ConnectionError, requests.Timeout, requests.exceptions.RequestException):
         elapsed = (time.time() - t0) * 1000
-    return None, elapsed
+    return None, elapsed, "Could not connect to the API server on localhost:8001."
 
 
 def api_health() -> tuple[bool, float]:
@@ -422,11 +883,16 @@ def build_network_html(scores_df: pd.DataFrame, top_n: int = 40) -> str:
 # ═══════════════════════════════════════════════════════
 def main():
     inject_css()
+    inject_scroll_observer()
+    inject_nav_tab_clicks()
 
     scores = load_scores()
     raw = load_raw()
     has_s = not scores.empty
     has_r = not raw.empty
+
+    render_shell_navigation()
+    sel_drugs, sel_events, risk_thresh, date_range = render_command_menu(raw, has_r)
 
     # ── HERO ─────────────────────────────────────────
     st.markdown("""
@@ -455,64 +921,6 @@ def main():
         kpi("🚨", f"{hi:,}", "High Risk Signals", "rose")
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-
-    # ── SIDEBAR ──────────────────────────────────────
-    with st.sidebar:
-        st.markdown("""
-        <div style="text-align:center; padding:14px 0 4px">
-            <span style="font-size:1.8rem">🛡️</span>
-            <div style="font-size:1.05rem;font-weight:800;color:#e8ecf4;margin-top:2px">PharmVigil AI</div>
-            <div style="font-size:0.65rem;color:#55657d;font-weight:500;letter-spacing:0.08em;text-transform:uppercase">Control Panel</div>
-        </div>""", unsafe_allow_html=True)
-        st.markdown("---")
-
-        drug_opts = sorted(raw["drug_name"].dropna().unique().tolist()) if has_r else []
-        sel_drugs = st.multiselect("🔬 Filter by Drug", drug_opts, default=[], key="sb_drugs")
-
-        event_opts = sorted(raw["adverse_event"].dropna().unique().tolist()) if has_r else []
-        sel_events = st.multiselect("⚠️ Filter by Event", event_opts, default=[], key="sb_events")
-
-        st.markdown("---")
-        risk_thresh = st.slider("🎯 Risk Score Threshold", 0.0, 1.0, 0.6, 0.05, key="sb_thresh")
-
-        if has_r and "report_date" in raw.columns:
-            mn, mx = raw["report_date"].min(), raw["report_date"].max()
-            if pd.notna(mn) and pd.notna(mx):
-                date_range = st.date_input("📅 Date Range", value=(mn.date(), mx.date()),
-                                           min_value=mn.date(), max_value=mx.date(), key="sb_date")
-            else:
-                date_range = None
-        else:
-            date_range = None
-
-        st.markdown("---")
-
-        # ── System monitoring panel ──────────────
-        st.markdown('<div class="panel"><h4>🖥 System Monitor</h4>', unsafe_allow_html=True)
-        api_ok, api_ms = api_health()
-        dot = "dot-green" if api_ok else "dot-red"
-        label = "Operational" if api_ok else "Offline"
-        st.markdown(f'<span class="dot {dot}"></span><span style="color:#d0d8e8;font-size:0.82rem">API: {label}</span>'
-                    f'<span style="float:right;color:#6b7fa0;font-size:0.75rem;font-family:JetBrains Mono,monospace">{api_ms:.0f}ms</span>',
-                    unsafe_allow_html=True)
-
-        model_exists = Path("models/xgboost_classifier.joblib").exists()
-        mdot = "dot-green" if model_exists else "dot-amber"
-        mlbl = "Loaded" if model_exists else "Not trained"
-        st.markdown(f'<span class="dot {mdot}"></span><span style="color:#d0d8e8;font-size:0.82rem">Model: {mlbl}</span>',
-                    unsafe_allow_html=True)
-
-        if has_r and "report_date" in raw.columns:
-            latest = raw["report_date"].max()
-            if pd.notna(latest):
-                st.markdown(f'<span class="dot dot-green"></span><span style="color:#d0d8e8;font-size:0.82rem">Data: {latest.strftime("%Y-%m-%d")}</span>',
-                            unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        st.markdown("""
-        <div style="text-align:center; padding:12px 0 4px; color:#3a4a66; font-size:0.65rem">
-            © 2025 PharmVigil AI · v2.0
-        </div>""", unsafe_allow_html=True)
 
     # ── Apply filters ────────────────────────────────
     f_raw = raw.copy() if has_r else pd.DataFrame()
@@ -546,6 +954,7 @@ def main():
     #  TAB 1 — SIGNAL DETECTION
     # ══════════════════════════════════════════════════
     with t1:
+        st.markdown('<div id="signals"></div>', unsafe_allow_html=True)
         if not has_s:
             st.warning("Run the training pipeline first.")
             st.code("python scripts/generate_faers_data.py\npython -m src.models.train_model")
@@ -606,6 +1015,7 @@ def main():
     #  TAB 2 — DRUG RISK ANALYSIS
     # ══════════════════════════════════════════════════
     with t2:
+        st.markdown('<div id="risk"></div>', unsafe_allow_html=True)
         if not has_s:
             st.warning("No signal data.")
             return
@@ -662,6 +1072,7 @@ def main():
     #  TAB 3 — ADVERSE EVENT TRENDS
     # ══════════════════════════════════════════════════
     with t3:
+        st.markdown('<div id="trends"></div>', unsafe_allow_html=True)
         if not has_r or "report_date" not in raw.columns:
             st.warning("No temporal data.")
             return
@@ -713,6 +1124,7 @@ def main():
     #  TAB 4 — NETWORK GRAPH
     # ══════════════════════════════════════════════════
     with t4:
+        st.markdown('<div id="network"></div>', unsafe_allow_html=True)
         if not has_s:
             st.warning("No signal data.")
             return
@@ -732,6 +1144,7 @@ def main():
     #  TAB 5 — GEOGRAPHIC MAP
     # ══════════════════════════════════════════════════
     with t5:
+        st.markdown('<div id="map"></div>', unsafe_allow_html=True)
         if not has_r or "country" not in raw.columns:
             st.warning("No geographic data.")
             return
@@ -767,6 +1180,7 @@ def main():
     #  TAB 6 — RISK PREDICTION
     # ══════════════════════════════════════════════════
     with t6:
+        st.markdown('<div id="predict"></div>', unsafe_allow_html=True)
         st.markdown("### 🧪 Real-Time Risk Prediction")
         st.markdown("<p style='color:#6b7fa0;font-size:0.82rem;margin-top:-8px'>"
                     "Submit a drug–event pair to the AI model for instant risk assessment.</p>",
@@ -786,7 +1200,7 @@ def main():
         with c_out:
             if go_btn and p_drug and p_event:
                 with st.spinner("🔄 Running inference …"):
-                    result, ms = api_predict(p_drug, p_event)
+                    result, ms, pred_err = api_predict(p_drug, p_event)
 
                 if result:
                     risk = result.get("risk_score", 0)
@@ -828,8 +1242,8 @@ def main():
                     st.markdown(f"<p style='text-align:center;color:#55657d;font-size:0.72rem'>"
                                 f"API latency: {ms:.0f}ms</p>", unsafe_allow_html=True)
                 else:
-                    st.error("Could not reach the API. Ensure the FastAPI server is running on localhost:8000.")
-                    st.code("uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload")
+                    st.error(pred_err or "Prediction failed. Ensure the FastAPI server is running on localhost:8001.")
+                    st.code("uvicorn src.api.app:app --host 0.0.0.0 --port 8001 --reload")
 
             elif go_btn:
                 st.warning("Select both a drug and event.")
@@ -845,68 +1259,23 @@ def main():
 
 
     # ══════════════════════════════════════════════════
-    #  TAB 7 — AUDIT & COMPLIANCE
+    #  TAB 7 — CAPA WORKFLOW BOARD
     # ══════════════════════════════════════════════════
     with t7:
-        st.markdown("### 🛡️ Audit Readiness & Portfolio Compliance")
-        
-        audit_data = fetch_audit_portfolio()
-        if not audit_data:
-            st.info("No audit metrics available. Ensure system data exists.")
-        else:
-            df_audit = pd.DataFrame(audit_data)
-            avg_on_time = df_audit["on_time_submission_rate"].mean() * 100
-            avg_capa = df_audit["capa_closure_rate"].mean() * 100
-            avg_defect = df_audit["qc_defect_rate"].mean() * 100
-            avg_score = df_audit["audit_score"].mean() * 100
-
-            # KPI Cards
-            k1, k2, k3, k4 = st.columns(4)
-            with k1:
-                kpi_card("Readiness Score", f"{avg_score:.1f}%", "kpi-blue", "🛡️")
-            with k2:
-                cls = "kpi-green" if avg_on_time > 80 else "kpi-amber"
-                kpi_card("On-Time Subs", f"{avg_on_time:.1f}%", cls, "📅")
-            with k3:
-                cls = "kpi-green" if avg_capa > 75 else "kpi-amber"
-                kpi_card("CAPA Closure", f"{avg_capa:.1f}%", cls, "✅")
-            with k4:
-                cls = "kpi-rose" if avg_defect > 10 else "kpi-green"
-                kpi_card("QC Defect Rate", f"{avg_defect:.1f}%", cls, "⚠️")
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            c_left, c_right = st.columns(2)
-            
-            with c_left:
-                st.markdown("#### ⏳ Overdue Submissions")
-                osubs = fetch_overdue_submissions()
-                if not osubs:
-                    st.success("No overdue submissions.")
-                else:
-                    df_os = pd.DataFrame(osubs)[["product_id", "submission_type", "due_date", "risk_score"]]
-                    df_os["due_date"] = pd.to_datetime(df_os["due_date"]).dt.strftime("%Y-%m-%d")
-                    st.dataframe(df_os, use_container_width=True, hide_index=True)
-
-            with c_right:
-                st.markdown("#### 🚨 Open CAPA Cases")
-                capas = fetch_open_capas()
-                if not capas:
-                    st.success("No open CAPA cases.")
-                else:
-                    df_c = pd.DataFrame(capas)[["product_id", "state", "title", "due_date"]]
-                    df_c["due_date"] = pd.to_datetime(df_c["due_date"]).dt.strftime("%Y-%m-%d")
-                    st.dataframe(df_c, use_container_width=True, hide_index=True)
+        st.markdown('<div id="audit"></div>', unsafe_allow_html=True)
+        render_capa_board()
 
 
     # ══════════════════════════════════════════════════
     #  TAB 8 — SYSTEM ACTIVITY
     # ══════════════════════════════════════════════════
     with t8:
+        st.markdown('<div id="activity"></div>', unsafe_allow_html=True)
         c_head, c_btn = st.columns([5, 1])
         with c_head:
             st.markdown("### 📜 System Activity Timeline")
         with c_btn:
-            if st.button("🔄 Refresh", use_container_width=True):
+            if st.button("🔄 Refresh", use_container_width=True, key="refresh_system_activity"):
                 fetch_events.clear()
 
         events = fetch_events(limit=50)
@@ -919,7 +1288,7 @@ def main():
                 # Deterministic styling based on event type
                 ev_type = ev.get('event_type', '').lower()
                 if 'create' in ev_type:
-                    color = C["green"]
+                    color = C["emerald"]
                     icon = "✨"
                 elif 'status' in ev_type or 'change' in ev_type:
                     color = C["blue"]

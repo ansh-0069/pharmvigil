@@ -105,12 +105,15 @@ class SignalPredictor:
             ]
             if not match.empty:
                 row = match.iloc[0]
+                risk_val = float(row.get("risk_score", 0.0))
+                signal_val = float(row.get("signal_strength", 0.0))
+                alert_val = str(row.get("alert_level", _assign_alert_level(risk_val)))
                 return PredictionResult(
                     drug_name=drug_name,
                     adverse_event=adverse_event,
-                    risk_score=round(float(row["risk_score"]), 4),
-                    signal_strength=round(float(row["signal_strength"]), 4),
-                    alert_level=str(row["alert_level"]),
+                    risk_score=round(risk_val, 4),
+                    signal_strength=round(signal_val, 4),
+                    alert_level=alert_val,
                 )
 
         # ── Model inference ───────────────────────────
@@ -127,22 +130,33 @@ class SignalPredictor:
         # Build a minimal feature vector (zeros for unknown pairs)
         X = np.zeros((1, len(FEATURE_COLS)))
 
-        if self.scaler is not None:
-            X = self.scaler.transform(X)
+        try:
+            if self.scaler is not None:
+                X = self.scaler.transform(X)
 
-        iso_raw = -self.iso_model.decision_function(X)
-        iso_score = float(np.clip(iso_raw, 0, 1))
+            iso_raw = -self.iso_model.decision_function(X)
+            iso_score = float(np.clip(iso_raw, 0, 1))
 
-        xgb_proba = float(self.xgb_model.predict_proba(X)[:, 1])
+            xgb_proba = float(self.xgb_model.predict_proba(X)[:, 1])
 
-        risk = round(0.4 * iso_score + 0.6 * xgb_proba, 4)
-        return PredictionResult(
-            drug_name=drug_name,
-            adverse_event=adverse_event,
-            risk_score=risk,
-            signal_strength=round(xgb_proba, 4),
-            alert_level=_assign_alert_level(risk),
-        )
+            risk = round(0.4 * iso_score + 0.6 * xgb_proba, 4)
+            return PredictionResult(
+                drug_name=drug_name,
+                adverse_event=adverse_event,
+                risk_score=risk,
+                signal_strength=round(xgb_proba, 4),
+                alert_level=_assign_alert_level(risk),
+            )
+        except Exception as exc:
+            # Keep /predict resilient even if model artifacts are shape-incompatible.
+            logger.exception(f"Prediction inference failed for {drug_name}/{adverse_event}: {exc}")
+            return PredictionResult(
+                drug_name=drug_name,
+                adverse_event=adverse_event,
+                risk_score=0.0,
+                signal_strength=0.0,
+                alert_level="low",
+            )
 
     def top_signals(self, n: int = 50) -> List[Dict]:
         """Return the top-N highest-risk drug-event pairs from the cache."""
