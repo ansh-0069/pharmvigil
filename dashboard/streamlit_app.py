@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import subprocess
+import sys
 import time
 import tempfile
 from datetime import datetime
@@ -24,6 +27,7 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 from capa_board import render_capa_board
+from src.models.predict import get_predictor
 import streamlit.components.v1 as components
 
 # ═══════════════════════════════════════════════════════
@@ -36,7 +40,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-API_BASE = "http://localhost:8001"
+API_BASE = os.getenv("PHARMVIGIL_API_BASE", "http://localhost:8001")
 DATA_DIR = Path("data")
 SCORES_PATH = DATA_DIR / "processed" / "signal_scores.csv"
 RAW_PATH = DATA_DIR / "raw" / "adverse_events.csv"
@@ -718,6 +722,150 @@ def fetch_audit_portfolio() -> list:
         return []
 
 
+def _build_quick_scores(raw_csv: Path, out_csv: Path) -> None:
+    """Generate lightweight signal scores for demo environments without training."""
+    df = pd.read_csv(raw_csv)
+    if df.empty or "drug_name" not in df.columns or "adverse_event" not in df.columns:
+        raise ValueError("Raw dataset is missing required columns.")
+
+    work = df.copy()
+    work["drug_name"] = work["drug_name"].astype(str).str.lower().str.strip()
+    work["adverse_event"] = work["adverse_event"].astype(str).str.lower().str.strip()
+    work = work[(work["drug_name"] != "") & (work["adverse_event"] != "")]
+
+    total_reports = max(len(work), 1)
+
+    pair = (
+        work.groupby(["drug_name", "adverse_event"]).size().reset_index(name="co_occurrence_count")
+    )
+    drug_freq = work.groupby("drug_name").size().rename("drug_frequency")
+    event_freq = work.groupby("adverse_event").size().rename("event_frequency")
+
+    pair = pair.merge(drug_freq, on="drug_name", how="left")
+    pair = pair.merge(event_freq, on="adverse_event", how="left")
+    pair["total_reports"] = total_reports
+
+    # Simple disproportionality approximations for demo-only rendering.
+    pair["prr"] = (pair["co_occurrence_count"] / pair["drug_frequency"].clip(lower=1)) / (
+        pair["event_frequency"] / total_reports
+    ).clip(lower=1e-6)
+    pair["ror"] = ((pair["co_occurrence_count"] + 0.5) / (pair["drug_frequency"] - pair["co_occurrence_count"] + 0.5).clip(lower=0.5)) / (
+        (pair["event_frequency"] + 0.5) / (total_reports - pair["event_frequency"] + 0.5).clip(lower=0.5)
+    )
+
+    pair["log_prr"] = np.log1p(pair["prr"].clip(lower=0))
+    pair["log_ror"] = np.log1p(pair["ror"].clip(lower=0))
+    pair["drug_event_ratio"] = pair["co_occurrence_count"] / pair["drug_frequency"].clip(lower=1)
+    pair["time_trend_slope"] = 0.0
+
+    # Deterministic blended demo score in [0, 1].
+    a = pair["co_occurrence_count"] / pair["co_occurrence_count"].max()
+    b = pair["drug_event_ratio"].clip(upper=1)
+    c = (pair["log_prr"] / pair["log_prr"].max()).fillna(0)
+    pair["risk_score"] = (0.45 * a + 0.35 * b + 0.20 * c).clip(0, 1).round(4)
+    pair["signal_strength"] = pair["risk_score"]
+
+    pair["alert_level"] = "low"
+    pair.loc[pair["risk_score"] >= 0.30, "alert_level"] = "medium"
+    pair.loc[pair["risk_score"] >= 0.60, "alert_level"] = "high"
+    pair.loc[pair["risk_score"] >= 0.80, "alert_level"] = "critical"
+
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    pair.to_csv(out_csv, index=False)
+
+
+def bootstrap_demo_assets() -> None:
+    """Create demo data/train artifacts when running in a clean deployment."""
+    raw_missing = not RAW_PATH.exists()
+    scores_missing = not SCORES_PATH.exists()
+    model_missing = not Path("models/xgboost_classifier.joblib").exists()
+
+    if not raw_missing and not scores_missing and not model_missing:
+        return
+
+    missing_items = []
+    if raw_missing:
+        missing_items.append(str(RAW_PATH))
+    if scores_missing:
+        missing_items.append(str(SCORES_PATH))
+    if model_missing:
+        missing_items.append("models/xgboost_classifier.joblib")
+
+    st.warning(
+        "Deployment is missing artifacts. Use Quick Demo Mode for instant charts, "
+        "or Full Initialize for trained models.",
+        icon="⚙️",
+    )
+    st.caption("Missing: " + ", ".join(missing_items))
+
+    repo_root = Path(__file__).resolve().parents[1]
+    c_quick, c_full = st.columns(2)
+
+    with c_quick:
+        if st.button("Quick Demo Mode (Instant)", key="quick_demo_assets", use_container_width=True):
+            try:
+                if raw_missing:
+                    with st.spinner("Generating synthetic dataset..."):
+                        subprocess.run(
+                            [sys.executable, "scripts/generate_faers_data.py"],
+                            cwd=repo_root,
+                            check=True,
+                            capture_output=True,
+                            text=True,
+                        )
+                with st.spinner("Building lightweight demo scores..."):
+                    _build_quick_scores(RAW_PATH, SCORES_PATH)
+                st.success("Quick demo assets are ready. Reloading dashboard...")
+                st.cache_data.clear()
+                st.rerun()
+            except (subprocess.CalledProcessError, ValueError) as exc:
+                st.error(f"Quick demo setup failed: {str(exc)[:600]}")
+
+    with c_full:
+        if st.button("Full Initialize (Train Models)", type="primary", key="init_demo_assets", use_container_width=True):
+            try:
+                with st.spinner("Generating synthetic dataset..."):
+                    subprocess.run(
+                        [sys.executable, "scripts/generate_faers_data.py"],
+                        cwd=repo_root,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                with st.spinner("Training models and creating scores..."):
+                    subprocess.run(
+                        [sys.executable, "-m", "src.models.train_model"],
+                        cwd=repo_root,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                st.success("Full initialization complete. Reloading dashboard...")
+                st.cache_data.clear()
+                st.rerun()
+            except subprocess.CalledProcessError as exc:
+                stderr_text = (exc.stderr or "").strip()
+                if stderr_text:
+                    st.error(f"Full initialization failed: {stderr_text[:600]}")
+                else:
+                    st.error("Full initialization failed. Check deployment logs for details.")
+
+
+def _local_predict(drug: str, event: str) -> Optional[dict]:
+    """Fallback predictor for environments where the FastAPI service is unavailable."""
+    try:
+        pred = get_predictor().predict(drug_name=drug, adverse_event=event)
+        return {
+            "drug_name": pred.drug_name,
+            "adverse_event": pred.adverse_event,
+            "risk_score": pred.risk_score,
+            "signal_strength": pred.signal_strength,
+            "alert_level": pred.alert_level,
+        }
+    except Exception:
+        return None
+
+
 # ═══════════════════════════════════════════════════════
 _PLOTLY_BASE = dict(
     paper_bgcolor="rgba(0,0,0,0)",
@@ -806,10 +954,16 @@ def api_predict(drug: str, event: str) -> tuple[Optional[dict], float, Optional[
                 msg = f"{msg} {detail}"
         except Exception:
             pass
+        local = _local_predict(drug, event)
+        if local is not None:
+            return local, elapsed, None
         return None, elapsed, msg
     except (requests.ConnectionError, requests.Timeout, requests.exceptions.RequestException):
         elapsed = (time.time() - t0) * 1000
-    return None, elapsed, "Could not connect to the API server on localhost:8001."
+    local = _local_predict(drug, event)
+    if local is not None:
+        return local, elapsed, None
+    return None, elapsed, f"Could not connect to the API server at {API_BASE}."
 
 
 def api_health() -> tuple[bool, float]:
@@ -820,7 +974,10 @@ def api_health() -> tuple[bool, float]:
         ms = (time.time() - t0) * 1000
         return r.status_code == 200, ms
     except Exception:
-        return False, (time.time() - t0) * 1000
+        ms = (time.time() - t0) * 1000
+        # Deployed Streamlit often runs without local FastAPI; treat local model availability as healthy.
+        model_ready = Path("models/xgboost_classifier.joblib").exists()
+        return model_ready, ms
 
 
 def build_network_html(scores_df: pd.DataFrame, top_n: int = 40) -> str:
@@ -877,6 +1034,7 @@ def main():
     inject_css()
     inject_scroll_observer()
     inject_nav_tab_clicks()
+    bootstrap_demo_assets()
 
     scores = load_scores()
     raw = load_raw()
