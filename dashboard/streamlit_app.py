@@ -1778,46 +1778,27 @@ def main():
         if not events:
             st.info("No system events recorded yet.")
         else:
-            timeline_html = '<div style="margin-top:10px; padding:0 10px;">'
             for ev in events:
                 # Deterministic styling based on event type
                 ev_type = ev.get('event_type', '').lower()
                 if 'create' in ev_type:
-                    color = C["emerald"]
                     icon = "✨"
                 elif 'status' in ev_type or 'change' in ev_type:
-                    color = C["blue"]
                     icon = "🔄"
                 elif 'error' in ev_type or 'fail' in ev_type:
-                    color = C["rose"]
                     icon = "❌"
                 elif 'score' in ev_type:
-                    color = C["amber"]
                     icon = "📊"
                 else:
-                    color = C["text_muted"]
                     icon = "📌"
 
                 dt_fmt = pd.to_datetime(ev['created_at']).strftime("%Y-%m-%d %H:%M:%S")
                 user = ev.get('user_id') or 'System'
                 entity_type = str(ev.get('entity_type', '')).upper()
                 desc = normalize_event_description(str(ev.get('event_description', '')))
-                
-                timeline_html += f"""
-                <div style="border-left: 2px solid {color}; padding-left: 16px; margin-bottom: 24px; position: relative;">
-                    <div style="position: absolute; left: -14px; top: 0px; background: #0b0f19; padding: 2px;">
-                        {icon}
-                    </div>
-                    <div style="font-size: 0.75rem; color: #6b7fa0; margin-bottom: 4px; font-family: 'JetBrains Mono', monospace;">
-                        {dt_fmt} &nbsp;•&nbsp; {html.escape(entity_type)} &nbsp;•&nbsp; {html.escape(str(user))}
-                    </div>
-                    <div style="color: {C['text']}; font-size: 0.95rem; font-weight: 500;">
-                        {html.escape(desc)}
-                    </div>
-                </div>
-                """
-            timeline_html += "</div>"
-            st.markdown(timeline_html, unsafe_allow_html=True)
+                st.markdown(f"{icon} **{dt_fmt}**  •  **{html.escape(entity_type)}**  •  {html.escape(str(user))}")
+                st.write(desc)
+                st.markdown("---")
 
 
 if __name__ == "__main__":
