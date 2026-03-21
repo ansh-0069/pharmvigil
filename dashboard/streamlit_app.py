@@ -1387,7 +1387,8 @@ def main():
     </div>""", unsafe_allow_html=True)
 
     render_shell_navigation()
-    sel_drugs, sel_events, risk_thresh, date_range = render_command_menu(raw, has_r)
+    filters = render_command_menu(raw, scores, has_r, has_s)
+    risk_thresh = filters["risk_threshold"]
 
     # ── KPIs ─────────────────────────────────────────
     k1, k2, k3, k4 = st.columns(4, gap="medium")
@@ -1406,20 +1407,7 @@ def main():
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
     # ── Apply filters ────────────────────────────────
-    f_raw = raw.copy() if has_r else pd.DataFrame()
-    f_scores = scores.copy() if has_s else pd.DataFrame()
-
-    if has_r and sel_drugs:
-        f_raw = f_raw[f_raw["drug_name"].isin(sel_drugs)]
-    if has_r and sel_events:
-        f_raw = f_raw[f_raw["adverse_event"].isin(sel_events)]
-    if has_r and date_range and isinstance(date_range, tuple) and len(date_range) == 2:
-        f_raw = f_raw[(f_raw["report_date"] >= pd.Timestamp(date_range[0])) &
-                      (f_raw["report_date"] <= pd.Timestamp(date_range[1]))]
-    if has_s and sel_drugs:
-        f_scores = f_scores[f_scores["drug_name"].isin(sel_drugs)]
-    if has_s and sel_events:
-        f_scores = f_scores[f_scores["adverse_event"].isin(sel_events)]
+    f_raw, f_scores = apply_global_filters(raw, scores, filters)
 
     # ── TABS ─────────────────────────────────────────
     t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
