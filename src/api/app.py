@@ -40,6 +40,7 @@ from src.api.submission_routes import router as submission_router
 from src.api.capa_routes import router as capa_router
 from src.api.audit_routes import router as audit_router
 from src.api.event_routes import router as event_router
+from src.database.db import init_db
 from src.models.predict import PredictionResult, get_predictor
 from src.services.submission_service import update_all_risk_scores
 
@@ -61,16 +62,12 @@ if scheduler is not None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Start scheduler on startup, shut down on exit."""
+    init_db()
     if not IS_VERCEL and scheduler is not None:
         scheduler.start()
     yield
     if not IS_VERCEL and scheduler is not None and scheduler.running:
         scheduler.shutdown(wait=False)
-
-
-app_lifespan = lifespan
-if IS_VERCEL:
-    app_lifespan = None
 
 
 # ── App bootstrap ────────────────────────────────────
@@ -80,7 +77,7 @@ app = FastAPI(
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    lifespan=app_lifespan,
+    lifespan=lifespan,
 )
 
 app.add_middleware(

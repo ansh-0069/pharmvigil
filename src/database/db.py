@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import uuid
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Generator
 
 from dotenv import load_dotenv
@@ -30,7 +31,9 @@ from src.utils.helpers import CONFIG, ROOT_DIR
 
 # ── Connection URL ─────────────────────────────────────────────
 # Priority: USE_SQLITE=1 env var → config.yaml url → env vars → SQLite fallback
-_USE_SQLITE: bool = os.getenv("USE_SQLITE", "0") == "1"
+_IS_VERCEL: bool = bool(os.getenv("VERCEL"))
+_ENV_DB_URL: str = os.getenv("DATABASE_URL") or os.getenv("DB_URL") or ""
+_USE_SQLITE: bool = os.getenv("USE_SQLITE", "0") == "1" or (_IS_VERCEL and not _ENV_DB_URL)
 
 _PG_URL: str = CONFIG.get("database", {}).get(
     "url",
@@ -42,9 +45,10 @@ _PG_URL: str = CONFIG.get("database", {}).get(
         db=os.getenv("DB_NAME", "pharmacovigilance"),
     ),
 )
-_SQLITE_URL: str = "sqlite:///" + str(ROOT_DIR / "pharma_local.db")
+_SQLITE_PATH: Path = Path("/tmp/pharma_local.db") if _IS_VERCEL else (ROOT_DIR / "pharma_local.db")
+_SQLITE_URL: str = "sqlite:///" + str(_SQLITE_PATH)
 
-_DB_URL: str = _SQLITE_URL if _USE_SQLITE else _PG_URL
+_DB_URL: str = _ENV_DB_URL or (_SQLITE_URL if _USE_SQLITE else _PG_URL)
 
 # ── Engine ─────────────────────────────────────────────────────
 _connect_args = {"check_same_thread": False} if _DB_URL.startswith("sqlite") else {}
