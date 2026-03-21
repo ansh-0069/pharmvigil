@@ -1629,8 +1629,8 @@ def main():
 
         n_nodes = st.slider("Number of top signal pairs", 10, 80, 35, key="net_n")
         with st.spinner("Building network …"):
-            html = build_network_html(f_scores, top_n=n_nodes)
-        components.html(html, height=520, scrolling=False)
+            network_html = build_network_html(f_scores, top_n=n_nodes)
+        components.html(network_html, height=520, scrolling=False)
 
     # ══════════════════════════════════════════════════
     #  TAB 5 — GEOGRAPHIC MAP
