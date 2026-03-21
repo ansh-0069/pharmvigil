@@ -23,6 +23,7 @@ GET    /audit/{product_id}    — per-product audit metrics
 """
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
@@ -39,6 +40,8 @@ from src.models.predict import PredictionResult, get_predictor
 from src.services.submission_service import update_all_risk_scores
 
 # ── Scheduler ────────────────────────────────────────
+IS_VERCEL = bool(os.getenv("VERCEL"))
+
 scheduler = BackgroundScheduler()
 scheduler.add_job(
     update_all_risk_scores,
@@ -53,9 +56,16 @@ scheduler.add_job(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Start scheduler on startup, shut down on exit."""
-    scheduler.start()
+    if not IS_VERCEL:
+        scheduler.start()
     yield
-    scheduler.shutdown(wait=False)
+    if not IS_VERCEL and scheduler.running:
+        scheduler.shutdown(wait=False)
+
+
+app_lifespan = lifespan
+if IS_VERCEL:
+    app_lifespan = None
 
 
 # ── App bootstrap ────────────────────────────────────
@@ -65,7 +75,7 @@ app = FastAPI(
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    lifespan=lifespan,
+    lifespan=app_lifespan,
 )
 
 app.add_middleware(
