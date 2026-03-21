@@ -165,16 +165,33 @@ def _fetch_all_cases() -> list:
         return []
 
 
-def _advance_case(case_id: int, next_state: str) -> bool:
+@st.cache_data(ttl=10)
+def _fetch_recent_capa_events(limit: int = 40) -> list:
+    try:
+        r = requests.get(f"{API_URL}/api/v1/events/recent?limit={limit}", timeout=5)
+        if r.status_code != 200:
+            return []
+        events = r.json()
+        return [e for e in events if str(e.get("entity_type", "")).lower() == "capa"]
+    except Exception:
+        return []
+
+
+def _advance_case(case_id: int, next_state: str) -> tuple[bool, str]:
     """POST to the semantic transition endpoint."""
     endpoint = _ADVANCE_ENDPOINT.get(next_state)
     if not endpoint:
-        return False
+        return False, f"Unknown transition target: {next_state}"
     try:
         r = requests.patch(f"{API_URL}/capa/{case_id}/{endpoint}", timeout=5)
-        return r.status_code == 200
-    except Exception:
-        return False
+        if r.status_code == 200:
+            return True, ""
+        detail = ""
+        if r.headers.get("content-type", "").startswith("application/json"):
+            detail = r.json().get("detail", "")
+        return False, detail or f"Transition API returned {r.status_code}."
+    except Exception as exc:
+        return False, str(exc)
 
 
 def _create_case(product_id: str, title: str, description: str,
@@ -239,13 +256,14 @@ def _render_card(case: dict, col_state: str) -> None:
         btn_key = f"advance_{cid}_{col_state}_{next_state}"
         if st.button(btn_label, key=btn_key, use_container_width=True):
             with st.spinner("Transitioning …"):
-                ok = _advance_case(cid, next_state)
+                ok, err = _advance_case(cid, next_state)
             if ok:
                 st.success(f"CAPA-{cid:03d} moved to {next_state}")
                 _fetch_all_cases.clear()
+                _fetch_recent_capa_events.clear()
                 st.rerun()
             else:
-                st.error("Transition failed — check server logs.")
+                st.error(f"Transition failed: {err}")
 
 
 # ── Main Board ────────────────────────────────────────
@@ -288,6 +306,7 @@ def render_capa_board() -> None:
                         st.success("CAPA case created!")
                         st.session_state["show_new_capa_form"] = False
                         _fetch_all_cases.clear()
+                        _fetch_recent_capa_events.clear()
                         time.sleep(0.4)
                         st.rerun()
                     else:
@@ -326,6 +345,22 @@ def render_capa_board() -> None:
             else:
                 for case in board[state]:
                     _render_card(case, state)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("#### 📜 CAPA Audit Log")
+    events = _fetch_recent_capa_events(limit=30)
+    if not events:
+        st.info("No CAPA audit events yet.")
+    else:
+        for ev in events[:20]:
+            ts = ev.get("created_at", "")
+            try:
+                ts = pd.to_datetime(ts).strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+            ev_type = str(ev.get("event_type", "")).replace("_", " ").upper() or "EVENT"
+            desc = str(ev.get("event_description", "")).strip()
+            st.markdown(f"- **{ts}** | `{ev_type}` | {desc}")
 
 
 # ── Standalone run support ────────────────────────────
