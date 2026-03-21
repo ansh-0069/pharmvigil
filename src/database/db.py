@@ -25,6 +25,7 @@ from sqlalchemy import (
     Text,
     create_engine,
     func,
+    text,
 )
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
@@ -72,8 +73,26 @@ if not _DB_URL.startswith("sqlite"):
     _engine_kwargs["pool_size"] = 10
 
 engine = create_engine(_DB_URL, **_engine_kwargs)
+
+
+def _fallback_to_sqlite_if_unreachable() -> None:
+    """On Vercel, degrade gracefully to local /tmp SQLite when external DB is unreachable."""
+    global engine, SessionLocal
+    if not _IS_VERCEL or _DB_URL.startswith("sqlite"):
+        return
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception:
+        engine = create_engine(_SQLITE_URL, connect_args={"check_same_thread": False})
+        SessionLocal.configure(bind=engine)
+
+
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 Base = declarative_base()
+
+_fallback_to_sqlite_if_unreachable()
 
 
 # ── ORM Models ───────────────────────────────────────
