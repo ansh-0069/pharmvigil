@@ -31,7 +31,13 @@ def _sanitize_description(text: str) -> str:
     """Normalize event descriptions to readable plain text."""
     if not text:
         return ""
-    cleaned = html.unescape(str(text))
+    cleaned = str(text)
+    # Handle single or double-escaped payloads from legacy entries.
+    for _ in range(3):
+        unescaped = html.unescape(cleaned)
+        if unescaped == cleaned:
+            break
+        cleaned = unescaped
     cleaned = re.sub(r"<br\s*/?>", " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"<[^>]+>", " ", cleaned)
     return " ".join(cleaned.split())
@@ -132,7 +138,7 @@ def _event_to_dict(event: SystemEvent) -> dict:
         "entity_type": event.entity_type,
         "entity_id": event.entity_id,
         "event_type": event.event_type,
-        "event_description": event.event_description,
+        "event_description": _sanitize_description(event.event_description),
         "user_id": event.user_id,
         "created_at": event.created_at.isoformat() if event.created_at else None,
     }
