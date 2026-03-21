@@ -27,10 +27,14 @@ import os
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+except Exception:
+    BackgroundScheduler = None
 
 from src.api.submission_routes import router as submission_router
 from src.api.capa_routes import router as capa_router
@@ -42,24 +46,25 @@ from src.services.submission_service import update_all_risk_scores
 # ── Scheduler ────────────────────────────────────────
 IS_VERCEL = bool(os.getenv("VERCEL"))
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(
-    update_all_risk_scores,
-    trigger="interval",
-    hours=24,
-    id="daily_risk_score_update",
-    replace_existing=True,
-)
+scheduler = BackgroundScheduler() if BackgroundScheduler else None
+if scheduler is not None:
+    scheduler.add_job(
+        update_all_risk_scores,
+        trigger="interval",
+        hours=24,
+        id="daily_risk_score_update",
+        replace_existing=True,
+    )
 
 
 # ── Lifespan ─────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Start scheduler on startup, shut down on exit."""
-    if not IS_VERCEL:
+    if not IS_VERCEL and scheduler is not None:
         scheduler.start()
     yield
-    if not IS_VERCEL and scheduler.running:
+    if not IS_VERCEL and scheduler is not None and scheduler.running:
         scheduler.shutdown(wait=False)
 
 
