@@ -4,10 +4,12 @@ Database layer — SQLAlchemy engine, session factory, and ORM models.
 from __future__ import annotations
 
 import os
+import socket
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 load_dotenv()  # Load .env before any env-var reads
@@ -52,6 +54,18 @@ _DB_URL: str = _ENV_DB_URL or (_SQLITE_URL if _USE_SQLITE else _PG_URL)
 
 # ── Engine ─────────────────────────────────────────────────────
 _connect_args = {"check_same_thread": False} if _DB_URL.startswith("sqlite") else {}
+if _IS_VERCEL and _DB_URL.startswith("postgresql"):
+    try:
+        parsed = urlparse(_DB_URL)
+        host = parsed.hostname
+        port = parsed.port or 5432
+        if host:
+            ipv4 = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
+            _connect_args["hostaddr"] = ipv4
+    except Exception:
+        # If resolution fails, keep default behavior and let DB errors surface in logs.
+        pass
+
 _engine_kwargs: dict = {"connect_args": _connect_args}
 if not _DB_URL.startswith("sqlite"):
     _engine_kwargs["pool_pre_ping"] = True
