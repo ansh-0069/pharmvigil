@@ -156,15 +156,28 @@ h3 {
 }
 
 .hero-title {
-    font-size: clamp(1.35rem, 4vw, 4.2rem);
-    line-height: 1.02;
+    display: flex;
+    align-items: center;
+    gap: 0.42em;
+    line-height: 1.04;
     color: #f1f5f9 !important;
     margin-bottom: 0.8rem;
     max-width: 100%;
     white-space: nowrap;
     text-wrap: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+}
+
+.hero-title-icon {
+    font-size: clamp(1.35rem, 2.8vw, 4rem);
+    line-height: 1;
+    flex: 0 0 auto;
+}
+
+.hero-title-text {
+    font-size: clamp(1.2rem, 3.05vw, 3.6rem);
+    letter-spacing: -0.02em;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .hero-sub {
@@ -539,7 +552,13 @@ h3 {
     .hero-title {
         line-height: 1.03;
         max-width: 100%;
-        font-size: clamp(0.95rem, 4.2vw, 2rem);
+        gap: 0.3em;
+    }
+    .hero-title-icon {
+        font-size: clamp(1rem, 6vw, 1.9rem);
+    }
+    .hero-title-text {
+        font-size: clamp(0.78rem, 3.45vw, 1.65rem);
     }
     .hero-sub {
         font-size: 0.97rem;
@@ -1106,7 +1125,10 @@ def main():
     # ── HERO ─────────────────────────────────────────
     st.markdown("""
     <div class="hero">
-        <div class="hero-title">🛡️ AI Pharmacovigilance Intelligence Platform</div>
+        <div class="hero-title">
+            <span class="hero-title-icon">🛡️</span>
+            <span class="hero-title-text">AI Pharmacovigilance Intelligence Platform</span>
+        </div>
         <p class="hero-sub">
             Enterprise drug safety signal detection — analysing FDA FAERS adverse
             event data with ML & NLP to surface emerging pharmacovigilance signals
