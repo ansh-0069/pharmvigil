@@ -1100,9 +1100,6 @@ def main():
     has_s = not scores.empty
     has_r = not raw.empty
 
-    render_shell_navigation()
-    sel_drugs, sel_events, risk_thresh, date_range = render_command_menu(raw, has_r)
-
     # ── HERO ─────────────────────────────────────────
     st.markdown("""
     <div class="hero">
@@ -1114,6 +1111,9 @@ def main():
         </p>
         <span class="hero-badge">⚡ Signal Engine v2.0</span>
     </div>""", unsafe_allow_html=True)
+
+    render_shell_navigation()
+    sel_drugs, sel_events, risk_thresh, date_range = render_command_menu(raw, has_r)
 
     # ── KPIs ─────────────────────────────────────────
     k1, k2, k3, k4 = st.columns(4, gap="medium")
