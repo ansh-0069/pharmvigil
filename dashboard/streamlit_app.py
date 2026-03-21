@@ -45,7 +45,17 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-API_BASE = os.getenv("PHARMVIGIL_API_BASE", "http://localhost:8000")
+def resolve_api_base() -> str:
+    secret_api_base = ""
+    try:
+        secret_api_base = st.secrets.get("PHARMVIGIL_API_BASE", "")
+    except Exception:
+        pass
+
+    return os.getenv("PHARMVIGIL_API_BASE", secret_api_base or "http://localhost:8000").rstrip("/")
+
+
+API_BASE = resolve_api_base()
 DATA_DIR = Path("data")
 SCORES_PATH = DATA_DIR / "processed" / "signal_scores.csv"
 RAW_PATH = DATA_DIR / "raw" / "adverse_events.csv"

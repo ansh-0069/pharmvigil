@@ -13,7 +13,17 @@ import requests
 import streamlit as st
 
 # ── Config ────────────────────────────────────────────
-API_URL = os.getenv("PHARMVIGIL_API_BASE", "http://localhost:8000")
+def _resolve_api_url() -> str:
+    secret_api_base = ""
+    try:
+        secret_api_base = st.secrets.get("PHARMVIGIL_API_BASE", "")
+    except Exception:
+        pass
+
+    return os.getenv("PHARMVIGIL_API_BASE", secret_api_base or "http://localhost:8000").rstrip("/")
+
+
+API_URL = _resolve_api_url()
 
 STATES = ["OPEN", "INVESTIGATION", "CORRECTIVE_ACTION", "VERIFICATION", "CLOSED"]
 
@@ -281,7 +291,10 @@ def render_capa_board() -> None:
                         time.sleep(0.4)
                         st.rerun()
                     else:
-                        st.error(f"Failed to create case — API not reachable at {API_URL}.")
+                        cloud_hint = ""
+                        if "localhost" in API_URL or "127.0.0.1" in API_URL:
+                            cloud_hint = " On Streamlit Cloud, set PHARMVIGIL_API_BASE in app Secrets to your deployed FastAPI URL."
+                        st.error(f"Failed to create case — API not reachable at {API_URL}.{cloud_hint}")
                 else:
                     st.warning("Product ID and Title are required.")
 
