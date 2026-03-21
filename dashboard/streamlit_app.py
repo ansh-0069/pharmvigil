@@ -156,12 +156,15 @@ h3 {
 }
 
 .hero-title {
-    font-size: clamp(1.8rem, 4.8vw, 4.2rem);
-    line-height: 0.98;
+    font-size: clamp(1.35rem, 4vw, 4.2rem);
+    line-height: 1.02;
     color: #f1f5f9 !important;
     margin-bottom: 0.8rem;
-    max-width: 18ch;
-    text-wrap: balance;
+    max-width: 100%;
+    white-space: nowrap;
+    text-wrap: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .hero-sub {
@@ -536,7 +539,7 @@ h3 {
     .hero-title {
         line-height: 1.03;
         max-width: 100%;
-        font-size: clamp(1.5rem, 8.5vw, 2.45rem);
+        font-size: clamp(0.95rem, 4.2vw, 2rem);
     }
     .hero-sub {
         font-size: 0.97rem;
