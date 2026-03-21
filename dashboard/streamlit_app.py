@@ -12,6 +12,7 @@ import html
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -922,6 +923,16 @@ def create_capa_case(product_id: str, title: str, description: str, priority: st
         return False, str(exc)
 
 
+def normalize_event_description(description: str) -> str:
+    """Convert legacy HTML-like audit text into clean plain text for timeline rendering."""
+    if not description:
+        return ""
+    text = re.sub(r"<br\s*/?>", " ", description, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html.unescape(text)
+    return " ".join(text.split())
+
+
 def _build_quick_scores(raw_csv: Path, out_csv: Path) -> None:
     """Generate lightweight signal scores for demo environments without training."""
     df = pd.read_csv(raw_csv)
@@ -1764,7 +1775,7 @@ def main():
         if not events:
             st.info("No system events recorded yet.")
         else:
-            html = '<div style="margin-top:10px; padding:0 10px;">'
+            timeline_html = '<div style="margin-top:10px; padding:0 10px;">'
             for ev in events:
                 # Deterministic styling based on event type
                 ev_type = ev.get('event_type', '').lower()
@@ -1786,22 +1797,24 @@ def main():
 
                 dt_fmt = pd.to_datetime(ev['created_at']).strftime("%Y-%m-%d %H:%M:%S")
                 user = ev.get('user_id') or 'System'
+                entity_type = str(ev.get('entity_type', '')).upper()
+                desc = normalize_event_description(str(ev.get('event_description', '')))
                 
-                html += f"""
+                timeline_html += f"""
                 <div style="border-left: 2px solid {color}; padding-left: 16px; margin-bottom: 24px; position: relative;">
                     <div style="position: absolute; left: -14px; top: 0px; background: #0b0f19; padding: 2px;">
                         {icon}
                     </div>
                     <div style="font-size: 0.75rem; color: #6b7fa0; margin-bottom: 4px; font-family: 'JetBrains Mono', monospace;">
-                        {dt_fmt} &nbsp;•&nbsp; {ev['entity_type'].upper()} &nbsp;•&nbsp; {user}
+                        {dt_fmt} &nbsp;•&nbsp; {html.escape(entity_type)} &nbsp;•&nbsp; {html.escape(str(user))}
                     </div>
                     <div style="color: {C['text']}; font-size: 0.95rem; font-weight: 500;">
-                        {ev['event_description']}
+                        {html.escape(desc)}
                     </div>
                 </div>
                 """
-            html += "</div>"
-            st.markdown(html, unsafe_allow_html=True)
+            timeline_html += "</div>"
+            st.markdown(timeline_html, unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
