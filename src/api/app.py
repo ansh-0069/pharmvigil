@@ -29,6 +29,7 @@ from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from loguru import logger
 from pydantic import BaseModel, Field
 
 try:
@@ -62,7 +63,10 @@ if scheduler is not None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Start scheduler on startup, shut down on exit."""
-    init_db()
+    try:
+        init_db()
+    except Exception as exc:
+        logger.warning(f"Database initialization skipped: {exc}")
     if not IS_VERCEL and scheduler is not None:
         scheduler.start()
     yield

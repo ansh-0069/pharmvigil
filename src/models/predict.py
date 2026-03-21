@@ -72,20 +72,32 @@ class SignalPredictor:
         scaler_path = self.model_dir / "feature_scaler.joblib"
 
         if iso_path.exists():
-            self.iso_model = joblib.load(iso_path)
-            logger.info("Loaded Isolation Forest model")
+            try:
+                self.iso_model = joblib.load(iso_path)
+                logger.info("Loaded Isolation Forest model")
+            except Exception as exc:
+                logger.warning(f"Could not load Isolation Forest model: {exc}")
         if xgb_path.exists():
-            self.xgb_model = joblib.load(xgb_path)
-            logger.info("Loaded XGBoost classifier")
+            try:
+                self.xgb_model = joblib.load(xgb_path)
+                logger.info("Loaded XGBoost classifier")
+            except Exception as exc:
+                logger.warning(f"Could not load XGBoost model: {exc}")
         if scaler_path.exists():
-            self.scaler = joblib.load(scaler_path)
-            logger.info("Loaded feature scaler")
+            try:
+                self.scaler = joblib.load(scaler_path)
+                logger.info("Loaded feature scaler")
+            except Exception as exc:
+                logger.warning(f"Could not load feature scaler: {exc}")
 
     def _load_scored_cache(self) -> None:
         """Load pre-computed signal scores for fast lookup."""
         if SCORED_PATH.exists():
-            self.scored_cache = pd.read_csv(SCORED_PATH)
-            logger.info(f"Loaded {len(self.scored_cache):,} cached signal scores")
+            try:
+                self.scored_cache = pd.read_csv(SCORED_PATH)
+                logger.info(f"Loaded {len(self.scored_cache):,} cached signal scores")
+            except Exception as exc:
+                logger.warning(f"Could not load cached signal scores: {exc}")
 
     def predict(self, drug_name: str, adverse_event: str) -> PredictionResult:
         """
