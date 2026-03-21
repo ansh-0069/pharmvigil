@@ -236,7 +236,7 @@ def _render_card(case: dict, col_state: str) -> None:
     # Advance button (only if there's a valid next state)
     if next_state and col_state != "CLOSED":
         btn_label = f"→ {_STATE_LABEL.get(next_state, next_state)}"
-        btn_key = f"advance_{cid}_{col_state}_{int(time.time() * 1000) % 100000}"
+        btn_key = f"advance_{cid}_{col_state}_{next_state}"
         if st.button(btn_label, key=btn_key, use_container_width=True):
             with st.spinner("Transitioning …"):
                 ok = _advance_case(cid, next_state)
