@@ -16,6 +16,8 @@ Usage (from any service):
 """
 from __future__ import annotations
 
+import html
+import re
 import uuid
 from datetime import datetime
 from typing import List, Optional
@@ -23,6 +25,16 @@ from typing import List, Optional
 from loguru import logger
 
 from src.database.db import SystemEvent, SessionLocal
+
+
+def _sanitize_description(text: str) -> str:
+    """Normalize event descriptions to readable plain text."""
+    if not text:
+        return ""
+    cleaned = html.unescape(str(text))
+    cleaned = re.sub(r"<br\s*/?>", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+    return " ".join(cleaned.split())
 
 
 # ── Public API ───────────────────────────────────────
@@ -48,6 +60,7 @@ def log_event(
     -------
     Dict representation of the persisted SystemEvent row.
     """
+    description = _sanitize_description(description)
     event = SystemEvent(
         id=str(uuid.uuid4()),
         entity_type=entity_type.lower(),

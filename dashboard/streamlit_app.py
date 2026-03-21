@@ -927,10 +927,13 @@ def normalize_event_description(description: str) -> str:
     """Convert legacy HTML-like audit text into clean plain text for timeline rendering."""
     if not description:
         return ""
-    text = re.sub(r"<br\s*/?>", " ", description, flags=re.IGNORECASE)
+    text = html.unescape(description)
+    text = re.sub(r"<br\s*/?>", " ", text, flags=re.IGNORECASE)
     text = re.sub(r"<[^>]+>", " ", text)
-    text = html.unescape(text)
-    return " ".join(text.split())
+    text = " ".join(text.split())
+    if len(text) > 320:
+        text = text[:317] + "..."
+    return text
 
 
 def _build_quick_scores(raw_csv: Path, out_csv: Path) -> None:
