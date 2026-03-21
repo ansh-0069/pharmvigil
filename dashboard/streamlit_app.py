@@ -8,6 +8,7 @@ and CSV export capabilities.
 """
 from __future__ import annotations
 
+import html
 import io
 import json
 import os
@@ -44,7 +45,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-API_BASE = os.getenv("PHARMVIGIL_API_BASE", "http://localhost:8001")
+API_BASE = os.getenv("PHARMVIGIL_API_BASE", "http://localhost:8000")
 DATA_DIR = Path("data")
 SCORES_PATH = DATA_DIR / "processed" / "signal_scores.csv"
 RAW_PATH = DATA_DIR / "raw" / "adverse_events.csv"
@@ -692,46 +693,67 @@ def render_shell_navigation():
     st.markdown(
         """
         <div class="app-nav">
-            <a href="#" data-tab-index="0">Signals</a>
-            <a href="#" data-tab-index="1">Risk</a>
-            <a href="#" data-tab-index="2">Trends</a>
-            <a href="#" data-tab-index="3">Network</a>
-            <a href="#" data-tab-index="4">Map</a>
-            <a href="#" data-tab-index="5">Predict</a>
-            <a href="#" data-tab-index="6">Audit</a>
-            <a href="#" data-tab-index="7">Activity</a>
+            <a href="#" data-tab-index="0">Monitor</a>
+            <a href="#" data-tab-index="1">Investigate</a>
+            <a href="#" data-tab-index="2">Inbox</a>
+            <a href="#" data-tab-index="3">Operations</a>
+            <a href="#" data-tab-index="4">Activity</a>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-def render_command_menu(raw: pd.DataFrame, has_r: bool):
+def render_command_menu(raw: pd.DataFrame, scores: pd.DataFrame, has_r: bool, has_s: bool):
     st.markdown('<div class="cmd-anchor"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="cmd-title">Command Menu</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cmd-title">Global Filter Bar</div>', unsafe_allow_html=True)
 
+    filter_row_1 = st.columns([1.3, 1.3, 1, 1, 1.2], gap="small")
     drug_opts = sorted(raw["drug_name"].dropna().unique().tolist()) if has_r and "drug_name" in raw.columns else []
-    sel_drugs = st.multiselect("Drug Filters", drug_opts, default=[], key="sb_drugs")
-
     event_opts = sorted(raw["adverse_event"].dropna().unique().tolist()) if has_r and "adverse_event" in raw.columns else []
-    sel_events = st.multiselect("Event Filters", event_opts, default=[], key="sb_events")
+    severity_opts = sorted(raw["severity"].dropna().unique().tolist()) if has_r and "severity" in raw.columns else []
+    country_opts = sorted(raw["country"].dropna().unique().tolist()) if has_r and "country" in raw.columns else []
+    alert_opts = sorted(scores["alert_level"].dropna().unique().tolist()) if has_s and "alert_level" in scores.columns else []
 
-    risk_thresh = st.slider("Risk Threshold", 0.0, 1.0, 0.6, 0.05, key="sb_thresh")
+    with filter_row_1[0]:
+        sel_drugs = st.multiselect("Drug Filters", drug_opts, default=[], key="sb_drugs")
+    with filter_row_1[1]:
+        sel_events = st.multiselect("Event Filters", event_opts, default=[], key="sb_events")
+    with filter_row_1[2]:
+        sel_severity = st.multiselect("Severity", severity_opts, default=[], key="sb_severity")
+    with filter_row_1[3]:
+        sel_country = st.multiselect("Country", country_opts, default=[], key="sb_country")
+    with filter_row_1[4]:
+        sel_alert = st.multiselect("Alert Level", alert_opts, default=[], key="sb_alert")
+
+    filter_row_2 = st.columns([1.1, 1.6, 0.8], gap="small")
+    with filter_row_2[0]:
+        risk_thresh = st.slider("Risk Threshold", 0.0, 1.0, 0.6, 0.05, key="sb_thresh")
 
     if has_r and "report_date" in raw.columns:
         mn, mx = raw["report_date"].min(), raw["report_date"].max()
         if pd.notna(mn) and pd.notna(mx):
-            date_range = st.date_input(
-                "Date Window",
-                value=(mn.date(), mx.date()),
-                min_value=mn.date(),
-                max_value=mx.date(),
-                key="sb_date",
-            )
+            with filter_row_2[1]:
+                date_range = st.date_input(
+                    "Date Window",
+                    value=(mn.date(), mx.date()),
+                    min_value=mn.date(),
+                    max_value=mx.date(),
+                    key="sb_date",
+                )
         else:
             date_range = None
     else:
         date_range = None
+
+    with filter_row_2[2]:
+        if st.button("Reset Filters", use_container_width=True, key="reset_filters"):
+            for key in ["sb_drugs", "sb_events", "sb_severity", "sb_country", "sb_alert"]:
+                st.session_state[key] = []
+            st.session_state["sb_thresh"] = 0.6
+            if has_r and "report_date" in raw.columns and pd.notna(raw["report_date"].min()) and pd.notna(raw["report_date"].max()):
+                st.session_state["sb_date"] = (raw["report_date"].min().date(), raw["report_date"].max().date())
+            st.rerun()
 
     api_ok, api_ms = api_health()
     dot = "dot-green" if api_ok else "dot-red"
@@ -766,7 +788,15 @@ def render_command_menu(raw: pd.DataFrame, has_r: bool):
     """
     st.markdown(monitor_html, unsafe_allow_html=True)
 
-    return sel_drugs, sel_events, risk_thresh, date_range
+    return {
+        "drugs": sel_drugs,
+        "events": sel_events,
+        "severity": sel_severity,
+        "country": sel_country,
+        "alert_levels": sel_alert,
+        "risk_threshold": risk_thresh,
+        "date_range": date_range,
+    }
 
 
 @st.cache_data(ttl=30)
@@ -800,6 +830,86 @@ def fetch_audit_portfolio() -> list:
         return r.json() if r.status_code == 200 else []
     except requests.RequestException:
         return []
+
+
+@st.cache_data(ttl=30)
+def fetch_submissions() -> list:
+    try:
+        r = requests.get(f"{API_BASE}/submissions", timeout=5)
+        return r.json() if r.status_code == 200 else []
+    except requests.RequestException:
+        return []
+
+
+@st.cache_data(ttl=30)
+def fetch_entity_events(entity_type: str, entity_id: str) -> list:
+    try:
+        r = requests.get(f"{API_BASE}/api/v1/events/{entity_type}/{entity_id}", timeout=5)
+        return r.json() if r.status_code == 200 else []
+    except requests.RequestException:
+        return []
+
+
+def create_submission(product_id: str, submission_type: str, due_date: datetime, complexity_weight: float, notes: str) -> tuple[bool, Optional[str]]:
+    try:
+        r = requests.post(
+            f"{API_BASE}/submissions",
+            json={
+                "product_id": product_id,
+                "submission_type": submission_type,
+                "due_date": due_date.isoformat(),
+                "complexity_weight": complexity_weight,
+                "notes": notes or None,
+            },
+            timeout=10,
+        )
+        if r.status_code == 201:
+            fetch_submissions.clear()
+            fetch_overdue_submissions.clear()
+            fetch_events.clear()
+            return True, None
+        detail = r.json().get("detail") if r.headers.get("content-type", "").startswith("application/json") else None
+        return False, detail or f"Submission API returned {r.status_code}."
+    except requests.RequestException as exc:
+        return False, str(exc)
+
+
+def update_submission(submission_id: int, status: str) -> tuple[bool, Optional[str]]:
+    payload = {"status": status}
+    if status.upper() == "SUBMITTED":
+        payload["submitted_date"] = datetime.utcnow().isoformat()
+    try:
+        r = requests.patch(f"{API_BASE}/submissions/{submission_id}/status", json=payload, timeout=10)
+        if r.status_code == 200:
+            fetch_submissions.clear()
+            fetch_overdue_submissions.clear()
+            fetch_events.clear()
+            return True, None
+        detail = r.json().get("detail") if r.headers.get("content-type", "").startswith("application/json") else None
+        return False, detail or f"Status update failed with {r.status_code}."
+    except requests.RequestException as exc:
+        return False, str(exc)
+
+
+def create_capa_case(product_id: str, title: str, description: str, priority: str, assigned_to: str = "", due_date: Optional[datetime] = None) -> tuple[bool, Optional[str]]:
+    payload = {
+        "product_id": product_id,
+        "title": title,
+        "description": description or None,
+        "priority": priority,
+        "assigned_to": assigned_to or None,
+        "due_date": due_date.isoformat() if due_date else None,
+    }
+    try:
+        r = requests.post(f"{API_BASE}/capa", json=payload, timeout=10)
+        if r.status_code == 201:
+            fetch_open_capas.clear()
+            fetch_events.clear()
+            return True, None
+        detail = r.json().get("detail") if r.headers.get("content-type", "").startswith("application/json") else None
+        return False, detail or f"CAPA API returned {r.status_code}."
+    except requests.RequestException as exc:
+        return False, str(exc)
 
 
 def _build_quick_scores(raw_csv: Path, out_csv: Path) -> None:
@@ -1106,6 +1216,145 @@ def build_network_html(scores_df: pd.DataFrame, top_n: int = 40) -> str:
     tmp.close()
     with open(tmp.name, "r", encoding="utf-8") as f:
         return f.read()
+
+
+def apply_global_filters(raw: pd.DataFrame, scores: pd.DataFrame, filters: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
+    f_raw = raw.copy()
+    f_scores = scores.copy()
+
+    if not f_raw.empty and filters["drugs"]:
+        f_raw = f_raw[f_raw["drug_name"].isin(filters["drugs"])]
+    if not f_raw.empty and filters["events"]:
+        f_raw = f_raw[f_raw["adverse_event"].isin(filters["events"])]
+    if not f_raw.empty and filters["severity"] and "severity" in f_raw.columns:
+        f_raw = f_raw[f_raw["severity"].isin(filters["severity"])]
+    if not f_raw.empty and filters["country"] and "country" in f_raw.columns:
+        f_raw = f_raw[f_raw["country"].isin(filters["country"])]
+    if not f_raw.empty and filters["date_range"] and isinstance(filters["date_range"], tuple) and len(filters["date_range"]) == 2:
+        start_date = pd.Timestamp(filters["date_range"][0])
+        end_date = pd.Timestamp(filters["date_range"][1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+        if "report_date" in f_raw.columns:
+            f_raw = f_raw[(f_raw["report_date"] >= start_date) & (f_raw["report_date"] <= end_date)]
+
+    if not f_scores.empty:
+        if filters["drugs"]:
+            f_scores = f_scores[f_scores["drug_name"].isin(filters["drugs"])]
+        if filters["events"]:
+            f_scores = f_scores[f_scores["adverse_event"].isin(filters["events"])]
+        if filters["alert_levels"] and "alert_level" in f_scores.columns:
+            f_scores = f_scores[f_scores["alert_level"].isin(filters["alert_levels"])]
+        if "risk_score" in f_scores.columns:
+            f_scores = f_scores[f_scores["risk_score"] >= filters["risk_threshold"]]
+        if not f_raw.empty and {"drug_name", "adverse_event"}.issubset(f_raw.columns):
+            valid_pairs = f_raw[["drug_name", "adverse_event"]].drop_duplicates()
+            f_scores = f_scores.merge(valid_pairs, on=["drug_name", "adverse_event"], how="inner")
+
+    return f_raw, f_scores
+
+
+def choose_default_pair(scores_df: pd.DataFrame, raw_df: pd.DataFrame) -> tuple[str, str]:
+    if not scores_df.empty:
+        row = scores_df.sort_values("risk_score", ascending=False).iloc[0]
+        return str(row["drug_name"]), str(row["adverse_event"])
+    if not raw_df.empty:
+        row = raw_df[["drug_name", "adverse_event"]].dropna().iloc[0]
+        return str(row["drug_name"]), str(row["adverse_event"])
+    return "", ""
+
+
+def compute_explainability(pair_row: pd.Series) -> pd.DataFrame:
+    metrics = [
+        ("Risk score", float(pair_row.get("risk_score", 0)), 1.0),
+        ("Signal strength", float(pair_row.get("signal_strength", 0)), 1.0),
+        ("PRR", float(pair_row.get("prr", 0)), 5.0),
+        ("ROR", float(pair_row.get("ror", 0)), 5.0),
+        ("Drug-event ratio", float(pair_row.get("drug_event_ratio", 0)), 1.0),
+        ("Co-occurrence", float(pair_row.get("co_occurrence_count", 0)), max(float(pair_row.get("drug_frequency", 1)), 1.0)),
+        ("Trend slope", float(pair_row.get("time_trend_slope", 0)), 1.0),
+    ]
+    rows = []
+    for label, value, scale in metrics:
+        normalized = float(np.clip(value / scale if scale else value, 0, 1))
+        rows.append({"factor": label, "value": value, "impact": round(normalized, 4)})
+    exp_df = pd.DataFrame(rows).sort_values("impact", ascending=False)
+    if exp_df["impact"].sum() > 0:
+        exp_df["share"] = exp_df["impact"] / exp_df["impact"].sum()
+    else:
+        exp_df["share"] = 0.0
+    return exp_df
+
+
+def highlight_narrative(text: str, drug: str, event: str) -> str:
+    safe = html.escape(text)
+    for needle, color in [(drug, C["blue_l"]), (event, C["amber"])]:
+        if needle:
+            safe = safe.replace(
+                html.escape(needle),
+                f"<mark style='background:{color}22;color:{color};padding:0 2px;border-radius:4px'>{html.escape(needle)}</mark>",
+            )
+            title_needle = needle.title()
+            safe = safe.replace(
+                html.escape(title_needle),
+                f"<mark style='background:{color}22;color:{color};padding:0 2px;border-radius:4px'>{html.escape(title_needle)}</mark>",
+            )
+    return safe
+
+
+def build_alert_candidates(scores_df: pd.DataFrame, submissions: list, capas: list) -> list[dict]:
+    alerts: list[dict] = []
+    if not scores_df.empty:
+        top_pairs = scores_df.nlargest(min(12, len(scores_df)), "risk_score")
+        for _, row in top_pairs.iterrows():
+            alert_id = f"signal::{row['drug_name']}::{row['adverse_event']}"
+            alerts.append(
+                {
+                    "id": alert_id,
+                    "source": "Signal",
+                    "product_id": str(row["drug_name"]).upper().replace(" ", "-"),
+                    "title": f"{str(row['drug_name']).title()} -> {str(row['adverse_event']).title()}",
+                    "summary": f"Risk score {row['risk_score']:.4f} with {row.get('alert_level', 'low')} alert level.",
+                    "priority": str(row.get("alert_level", "medium")).upper(),
+                    "drug_name": str(row["drug_name"]),
+                    "adverse_event": str(row["adverse_event"]),
+                    "risk_score": float(row.get("risk_score", 0)),
+                }
+            )
+    for sub in submissions:
+        if sub.get("status", "").upper() != "SUBMITTED":
+            alerts.append(
+                {
+                    "id": f"submission::{sub['id']}",
+                    "source": "Submission",
+                    "product_id": sub.get("product_id", "UNKNOWN"),
+                    "title": f"{sub.get('submission_type', 'Submission')} due for {sub.get('product_id', 'Unknown')}",
+                    "summary": f"Status {sub.get('status')} with risk score {sub.get('risk_score', 0):.2f}.",
+                    "priority": "HIGH" if sub.get("risk_score", 0) >= 0.7 else "MEDIUM",
+                    "submission_id": sub["id"],
+                }
+            )
+    for capa in capas:
+        if capa.get("state") != "CLOSED":
+            alerts.append(
+                {
+                    "id": f"capa::{capa['id']}",
+                    "source": "CAPA",
+                    "product_id": capa.get("product_id", "UNKNOWN"),
+                    "title": capa.get("title", f"CAPA-{capa['id']}"),
+                    "summary": f"{capa.get('state', 'OPEN')} case assigned to {capa.get('assigned_to') or 'Unassigned'}.",
+                    "priority": str(capa.get("priority", "MEDIUM")).upper(),
+                    "capa_id": capa["id"],
+                }
+            )
+    return alerts
+
+
+def get_alert_status(alert_id: str) -> str:
+    store = st.session_state.setdefault("alert_status_map", {})
+    return store.get(alert_id, "NEW")
+
+
+def set_alert_status(alert_id: str, status: str) -> None:
+    st.session_state.setdefault("alert_status_map", {})[alert_id] = status
 
 
 # ═══════════════════════════════════════════════════════
@@ -1476,8 +1725,8 @@ def main():
                     st.markdown(f"<p style='text-align:center;color:#55657d;font-size:0.72rem'>"
                                 f"API latency: {ms:.0f}ms</p>", unsafe_allow_html=True)
                 else:
-                    st.error(pred_err or "Prediction failed. Ensure the FastAPI server is running on localhost:8001.")
-                    st.code("uvicorn src.api.app:app --host 0.0.0.0 --port 8001 --reload")
+                    st.error(pred_err or f"Prediction failed. Ensure the FastAPI server is reachable at {API_BASE}.")
+                    st.code("uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload")
 
             elif go_btn:
                 st.warning("Select both a drug and event.")

@@ -4,6 +4,7 @@ Enterprise-grade visual pipeline for CAPA lifecycle management.
 """
 from __future__ import annotations
 
+import os
 import time
 from typing import Optional
 
@@ -12,7 +13,7 @@ import requests
 import streamlit as st
 
 # ── Config ────────────────────────────────────────────
-API_URL = "http://localhost:8000"
+API_URL = os.getenv("PHARMVIGIL_API_BASE", "http://localhost:8000")
 
 STATES = ["OPEN", "INVESTIGATION", "CORRECTIVE_ACTION", "VERIFICATION", "CLOSED"]
 
@@ -280,7 +281,7 @@ def render_capa_board() -> None:
                         time.sleep(0.4)
                         st.rerun()
                     else:
-                        st.error("Failed to create case — ensure FastAPI is running.")
+                        st.error(f"Failed to create case — API not reachable at {API_URL}.")
                 else:
                     st.warning("Product ID and Title are required.")
 
