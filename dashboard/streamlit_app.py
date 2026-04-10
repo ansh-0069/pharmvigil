@@ -17,6 +17,7 @@ import subprocess
 import sys
 import time
 import tempfile
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -103,6 +104,37 @@ APP_CSS = """
     --app-accent: #7dd3fc;
 }
 
+/*
+ * Version-sensitive styling (tested against Streamlit 1.31+):
+ * - [data-baseweb="select"|"slider"|"tab"|"tag"] — tied to Base Web; may change if Streamlit replaces widgets.
+ * - [data-testid="stVerticalBlockBorderWrapper"] — bordered `st.container(border=True)` (~1.29+).
+ * - Layout chrome: stHeader, stToolbar, stAppViewContainer, stMarkdownContainer — occasionally renamed in major bumps.
+ */
+
+/* Bordered section panels from section_card() */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    background: linear-gradient(165deg, rgba(17, 24, 39, 0.94), rgba(11, 17, 27, 0.9)) !important;
+    border: 1px solid rgba(71, 85, 105, 0.55) !important;
+    border-radius: 16px !important;
+    padding: 1.05rem 1.2rem 1.25rem !important;
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.04) inset,
+        0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.dash-section-title {
+    font-family: 'Space Grotesk', 'Manrope', sans-serif !important;
+    font-size: 0.7rem !important;
+    font-weight: 700 !important;
+    font-variant: small-caps !important;
+    letter-spacing: 0.2em !important;
+    color: #94a3b8 !important;
+    margin: 0 0 1rem 0 !important;
+    padding-bottom: 0.7rem !important;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.65) !important;
+    line-height: 1.35 !important;
+}
+
 /* Hide Streamlit chrome */
 header[data-testid="stHeader"],
 div[data-testid="stToolbar"],
@@ -124,25 +156,42 @@ html, body, [data-testid="stAppViewContainer"], .stApp {
     font-family: 'Manrope', sans-serif !important;
 }
 
-.block-container { max-width: 100vw !important; padding: 0.5rem 3.8vw 7rem !important; }
+.block-container {
+    max-width: min(1520px, 100vw) !important;
+    padding: 0.65rem clamp(1rem, 3.2vw, 2.75rem) 5.5rem !important;
+}
 
-/* Typography direction */
+/* Typography — native Streamlit markdown + HTML heroes */
+[data-testid="stMarkdownContainer"] h1,
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h4,
+[data-testid="stMarkdownContainer"] h5,
 h1, h2, h4, h5 {
     color: var(--app-text) !important;
     letter-spacing: -0.03em;
+    font-weight: 600 !important;
 }
 
+[data-testid="stMarkdownContainer"] h1,
 h1, .hero-title {
     font-family: 'Space Grotesk', sans-serif !important;
 }
 
+[data-testid="stMarkdownContainer"] h2 {
+    font-size: 1.15rem !important;
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.35rem !important;
+}
+
+[data-testid="stMarkdownContainer"] h3,
 h3 {
-    color: #94A3B8 !important;
-    font-size: 12px !important;
-    letter-spacing: 2px !important;
+    color: #94a3b8 !important;
+    font-size: 0.72rem !important;
+    letter-spacing: 0.18em !important;
     text-transform: uppercase !important;
     font-weight: 700 !important;
-    margin-bottom: 0.7rem !important;
+    margin-bottom: 0.65rem !important;
+    font-family: 'Space Grotesk', 'Manrope', sans-serif !important;
 }
 
 /* Hero refresh */
@@ -315,19 +364,38 @@ h3 {
 /* Native widgets re-skin */
 .stButton > button,
 .stDownloadButton > button {
-    border-radius: 999px !important;
-    border: 1px solid rgba(56, 189, 248, 0.45) !important;
-    background: linear-gradient(120deg, rgba(14, 116, 144, 0.38), rgba(14, 165, 233, 0.2)) !important;
-    color: #d9f5ff !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.02em;
+    border-radius: 10px !important;
+    border: 1px solid rgba(71, 85, 105, 0.75) !important;
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 36, 0.92)) !important;
+    color: #e2e8f0 !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.03em;
+    font-size: 0.8125rem !important;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
 }
 
 .stButton > button:hover,
 .stDownloadButton > button:hover {
     transform: translateY(-1px);
-    border-color: rgba(125, 211, 252, 0.88) !important;
-    background: linear-gradient(120deg, rgba(14, 116, 144, 0.52), rgba(14, 165, 233, 0.32)) !important;
+    border-color: rgba(56, 189, 248, 0.55) !important;
+    background: linear-gradient(180deg, rgba(51, 65, 85, 0.55), rgba(30, 41, 59, 0.95)) !important;
+}
+
+/* Primary actions — `kind` attr is emitted on Streamlit 1.28+ buttons */
+.stButton > button[kind="primary"],
+.stDownloadButton > button[kind="primary"] {
+    border-radius: 10px !important;
+    border: 1px solid rgba(56, 189, 248, 0.55) !important;
+    background: linear-gradient(125deg, rgba(14, 165, 233, 0.42), rgba(37, 99, 235, 0.38)) !important;
+    color: #f0f9ff !important;
+    font-weight: 700 !important;
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.12), 0 8px 28px rgba(14, 165, 233, 0.12);
+}
+
+.stButton > button[kind="primary"]:hover,
+.stDownloadButton > button[kind="primary"]:hover {
+    border-color: rgba(125, 211, 252, 0.85) !important;
+    background: linear-gradient(125deg, rgba(14, 165, 233, 0.55), rgba(37, 99, 235, 0.48)) !important;
 }
 
 .stSelectbox [data-baseweb="select"],
@@ -343,9 +411,54 @@ h3 {
 }
 
 .stMultiSelect [data-baseweb="tag"] {
-    background: rgba(30, 41, 59, 0.9) !important;
-    color: #c8d4e7 !important;
-    border: 1px solid rgba(71, 85, 105, 0.8) !important;
+    border-radius: 999px !important;
+    padding: 0.18rem 0.62rem 0.2rem !important;
+    font-size: 0.76rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.02em !important;
+    background: rgba(56, 189, 248, 0.1) !important;
+    color: #e0f2fe !important;
+    border: 1px solid rgba(56, 189, 248, 0.35) !important;
+}
+
+.stMultiSelect [data-baseweb="tag"] span {
+    color: #e0f2fe !important;
+}
+
+/* Multiselect value area + dropdown — chip field */
+.stMultiSelect [data-baseweb="select"] > div {
+    min-height: 2.65rem !important;
+}
+
+.stMultiSelect [data-baseweb="tag"] [role="button"],
+.stMultiSelect [data-baseweb="tag"] button {
+    color: #7dd3fc !important;
+}
+
+/* Slider track + thumb */
+.stSlider [data-baseweb="slider"] [data-testid="stSliderThumbValue"] {
+    color: #bae6fd !important;
+    font-family: 'IBM Plex Mono', monospace !important;
+    font-size: 0.78rem !important;
+}
+
+.stSlider [data-baseweb="slider"] [data-baseweb="thumb"] {
+    background: linear-gradient(145deg, #38bdf8, #2563eb) !important;
+    border: 2px solid rgba(255, 255, 255, 0.35) !important;
+    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.12) !important;
+    height: 18px !important;
+    width: 18px !important;
+}
+
+.stSlider [data-baseweb="slider"] [data-baseweb="track"] {
+    background: rgba(30, 41, 59, 0.95) !important;
+    height: 6px !important;
+    border-radius: 999px !important;
+}
+
+.stSlider [data-baseweb="slider"] [data-baseweb="track"] [data-baseweb="inner"] {
+    background: linear-gradient(90deg, rgba(37, 99, 235, 0.2), rgba(56, 189, 248, 0.85)) !important;
+    border-radius: 999px !important;
 }
 
 [data-testid="stDataFrame"],
@@ -543,6 +656,10 @@ h3 {
     .block-container {
         padding: 0.25rem 0.85rem 4.5rem !important;
     }
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        padding: 0.85rem 0.9rem 1rem !important;
+        border-radius: 14px !important;
+    }
     .app-nav {
         width: 100%;
         border-radius: 16px;
@@ -684,6 +801,17 @@ NAV_TABS_JS = """
 """
 
 
+@contextmanager
+def section_card(title: str):
+    """Reusable ops-style panel: `st.container(border=True)` + small-caps title (Streamlit >= 1.29)."""
+    with st.container(border=True):
+        st.markdown(
+            f'<p class="dash-section-title">{html.escape(title)}</p>',
+            unsafe_allow_html=True,
+        )
+        yield
+
+
 # ═══════════════════════════════════════════════════════
 #  CSS INJECTION — Enterprise Dark Theme
 # ═══════════════════════════════════════════════════════
@@ -717,87 +845,87 @@ def render_shell_navigation():
 
 def render_command_menu(raw: pd.DataFrame, scores: pd.DataFrame, has_r: bool, has_s: bool):
     st.markdown('<div class="cmd-anchor"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="cmd-title">Global Filter Bar</div>', unsafe_allow_html=True)
 
-    filter_row_1 = st.columns([1.3, 1.3, 1, 1, 1.2], gap="small")
-    drug_opts = sorted(raw["drug_name"].dropna().unique().tolist()) if has_r and "drug_name" in raw.columns else []
-    event_opts = sorted(raw["adverse_event"].dropna().unique().tolist()) if has_r and "adverse_event" in raw.columns else []
-    severity_opts = sorted(raw["severity"].dropna().unique().tolist()) if has_r and "severity" in raw.columns else []
-    country_opts = sorted(raw["country"].dropna().unique().tolist()) if has_r and "country" in raw.columns else []
-    alert_opts = sorted(scores["alert_level"].dropna().unique().tolist()) if has_s and "alert_level" in scores.columns else []
+    with section_card("Global filters & live status"):
+        filter_row_1 = st.columns([1.3, 1.3, 1, 1, 1.2], gap="small")
+        drug_opts = sorted(raw["drug_name"].dropna().unique().tolist()) if has_r and "drug_name" in raw.columns else []
+        event_opts = sorted(raw["adverse_event"].dropna().unique().tolist()) if has_r and "adverse_event" in raw.columns else []
+        severity_opts = sorted(raw["severity"].dropna().unique().tolist()) if has_r and "severity" in raw.columns else []
+        country_opts = sorted(raw["country"].dropna().unique().tolist()) if has_r and "country" in raw.columns else []
+        alert_opts = sorted(scores["alert_level"].dropna().unique().tolist()) if has_s and "alert_level" in scores.columns else []
 
-    with filter_row_1[0]:
-        sel_drugs = st.multiselect("Drug Filters", drug_opts, default=[], key="sb_drugs")
-    with filter_row_1[1]:
-        sel_events = st.multiselect("Event Filters", event_opts, default=[], key="sb_events")
-    with filter_row_1[2]:
-        sel_severity = st.multiselect("Severity", severity_opts, default=[], key="sb_severity")
-    with filter_row_1[3]:
-        sel_country = st.multiselect("Country", country_opts, default=[], key="sb_country")
-    with filter_row_1[4]:
-        sel_alert = st.multiselect("Alert Level", alert_opts, default=[], key="sb_alert")
+        with filter_row_1[0]:
+            sel_drugs = st.multiselect("Drug Filters", drug_opts, default=[], key="sb_drugs")
+        with filter_row_1[1]:
+            sel_events = st.multiselect("Event Filters", event_opts, default=[], key="sb_events")
+        with filter_row_1[2]:
+            sel_severity = st.multiselect("Severity", severity_opts, default=[], key="sb_severity")
+        with filter_row_1[3]:
+            sel_country = st.multiselect("Country", country_opts, default=[], key="sb_country")
+        with filter_row_1[4]:
+            sel_alert = st.multiselect("Alert Level", alert_opts, default=[], key="sb_alert")
 
-    filter_row_2 = st.columns([1.1, 1.6, 0.8], gap="small")
-    with filter_row_2[0]:
-        risk_thresh = st.slider("Risk Threshold", 0.0, 1.0, 0.6, 0.05, key="sb_thresh")
+        filter_row_2 = st.columns([1.1, 1.6, 0.8], gap="small")
+        with filter_row_2[0]:
+            risk_thresh = st.slider("Risk Threshold", 0.0, 1.0, 0.6, 0.05, key="sb_thresh")
 
-    if has_r and "report_date" in raw.columns:
-        mn, mx = raw["report_date"].min(), raw["report_date"].max()
-        if pd.notna(mn) and pd.notna(mx):
-            with filter_row_2[1]:
-                date_range = st.date_input(
-                    "Date Window",
-                    value=(mn.date(), mx.date()),
-                    min_value=mn.date(),
-                    max_value=mx.date(),
-                    key="sb_date",
-                )
+        if has_r and "report_date" in raw.columns:
+            mn, mx = raw["report_date"].min(), raw["report_date"].max()
+            if pd.notna(mn) and pd.notna(mx):
+                with filter_row_2[1]:
+                    date_range = st.date_input(
+                        "Date Window",
+                        value=(mn.date(), mx.date()),
+                        min_value=mn.date(),
+                        max_value=mx.date(),
+                        key="sb_date",
+                    )
+            else:
+                date_range = None
         else:
             date_range = None
-    else:
-        date_range = None
 
-    with filter_row_2[2]:
-        if st.button("Reset Filters", use_container_width=True, key="reset_filters"):
-            for key in ["sb_drugs", "sb_events", "sb_severity", "sb_country", "sb_alert"]:
-                st.session_state[key] = []
-            st.session_state["sb_thresh"] = 0.6
-            if has_r and "report_date" in raw.columns and pd.notna(raw["report_date"].min()) and pd.notna(raw["report_date"].max()):
-                st.session_state["sb_date"] = (raw["report_date"].min().date(), raw["report_date"].max().date())
-            st.rerun()
+        with filter_row_2[2]:
+            if st.button("Reset Filters", use_container_width=True, key="reset_filters"):
+                for key in ["sb_drugs", "sb_events", "sb_severity", "sb_country", "sb_alert"]:
+                    st.session_state[key] = []
+                st.session_state["sb_thresh"] = 0.6
+                if has_r and "report_date" in raw.columns and pd.notna(raw["report_date"].min()) and pd.notna(raw["report_date"].max()):
+                    st.session_state["sb_date"] = (raw["report_date"].min().date(), raw["report_date"].max().date())
+                st.rerun()
 
-    api_ok, api_ms = api_health()
-    dot = "dot-green" if api_ok else "dot-red"
-    label = "Operational" if api_ok else "Offline"
+        api_ok, api_ms = api_health()
+        dot = "dot-green" if api_ok else "dot-red"
+        label = "Operational" if api_ok else "Offline"
 
-    model_exists = Path("models/xgboost_classifier.joblib").exists()
-    mdot = "dot-green" if model_exists else "dot-amber"
-    mlbl = "Loaded" if model_exists else "Not trained"
+        model_exists = Path("models/xgboost_classifier.joblib").exists()
+        mdot = "dot-green" if model_exists else "dot-amber"
+        mlbl = "Loaded" if model_exists else "Not trained"
 
-    latest_text = "Unknown"
-    if has_r and "report_date" in raw.columns:
-        latest = raw["report_date"].max()
-        if pd.notna(latest):
-            latest_text = latest.strftime("%Y-%m-%d")
+        latest_text = "Unknown"
+        if has_r and "report_date" in raw.columns:
+            latest = raw["report_date"].max()
+            if pd.notna(latest):
+                latest_text = latest.strftime("%Y-%m-%d")
 
-    monitor_html = f"""
-    <div class="sys-monitor">
-        <div class="sys-monitor-title">System Monitor</div>
-        <div class="sys-monitor-row">
-            <span class="sys-monitor-left"><span class="dot {dot}"></span>API: {label}</span>
-            <span class="sys-monitor-right">{api_ms:.0f}ms</span>
+        monitor_html = f"""
+        <div class="sys-monitor">
+            <div class="sys-monitor-title">System Monitor</div>
+            <div class="sys-monitor-row">
+                <span class="sys-monitor-left"><span class="dot {dot}"></span>API: {label}</span>
+                <span class="sys-monitor-right">{api_ms:.0f}ms</span>
+            </div>
+            <div class="sys-monitor-row">
+                <span class="sys-monitor-left"><span class="dot {mdot}"></span>Model: {mlbl}</span>
+                <span class="sys-monitor-right">ready</span>
+            </div>
+            <div class="sys-monitor-row">
+                <span class="sys-monitor-left"><span class="dot dot-green"></span>Data: {latest_text}</span>
+                <span class="sys-monitor-right">latest</span>
+            </div>
         </div>
-        <div class="sys-monitor-row">
-            <span class="sys-monitor-left"><span class="dot {mdot}"></span>Model: {mlbl}</span>
-            <span class="sys-monitor-right">ready</span>
-        </div>
-        <div class="sys-monitor-row">
-            <span class="sys-monitor-left"><span class="dot dot-green"></span>Data: {latest_text}</span>
-            <span class="sys-monitor-right">latest</span>
-        </div>
-    </div>
-    """
-    st.markdown(monitor_html, unsafe_allow_html=True)
+        """
+        st.markdown(monitor_html, unsafe_allow_html=True)
 
     return {
         "drugs": sel_drugs,
@@ -1415,18 +1543,19 @@ def main():
     risk_thresh = filters["risk_threshold"]
 
     # ── KPIs ─────────────────────────────────────────
-    k1, k2, k3, k4 = st.columns(4, gap="medium")
-    with k1:
-        kpi("📋", f"{len(raw):,}" if has_r else "—", "Total Reports", "blue")
-    with k2:
-        kpi("💊", f"{raw['drug_name'].nunique():,}" if has_r and 'drug_name' in raw.columns else "—",
-            "Unique Drugs", "green")
-    with k3:
-        kpi("⚠️", f"{raw['adverse_event'].nunique():,}" if has_r and 'adverse_event' in raw.columns else "—",
-            "Adverse Events", "amber")
-    with k4:
-        hi = len(scores[scores["alert_level"].isin(["critical","high"])]) if has_s and "alert_level" in scores.columns else 0
-        kpi("🚨", f"{hi:,}", "High Risk Signals", "rose")
+    with section_card("Mission overview"):
+        k1, k2, k3, k4 = st.columns(4, gap="medium")
+        with k1:
+            kpi("📋", f"{len(raw):,}" if has_r else "—", "Total Reports", "blue")
+        with k2:
+            kpi("💊", f"{raw['drug_name'].nunique():,}" if has_r and 'drug_name' in raw.columns else "—",
+                "Unique Drugs", "green")
+        with k3:
+            kpi("⚠️", f"{raw['adverse_event'].nunique():,}" if has_r and 'adverse_event' in raw.columns else "—",
+                "Adverse Events", "amber")
+        with k4:
+            hi = len(scores[scores["alert_level"].isin(["critical","high"])]) if has_s and "alert_level" in scores.columns else 0
+            kpi("🚨", f"{hi:,}", "High Risk Signals", "rose")
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
@@ -1449,357 +1578,363 @@ def main():
     #  TAB 1 — SIGNAL DETECTION
     # ══════════════════════════════════════════════════
     with t1:
-        st.markdown('<div id="signals"></div>', unsafe_allow_html=True)
-        if not has_s:
-            st.warning("Run the training pipeline first.")
-            st.code("python scripts/generate_faers_data.py\npython -m src.models.train_model")
-            return
-
-        sig = f_scores[f_scores["risk_score"] >= risk_thresh].copy()
-
-        col_h, col_dl = st.columns([5, 1])
-        with col_h:
-            st.markdown(f"### 🔍 Safety Signals  <span style='color:#55657d;font-size:0.8rem;font-weight:400'>"
-                        f"threshold ≥ {risk_thresh}</span>", unsafe_allow_html=True)
-        with col_dl:
-            if not sig.empty:
-                csv = sig.to_csv(index=False)
-                st.download_button("⬇ Export CSV", csv, "safety_signals.csv", "text/csv")
-
-        if sig.empty:
-            st.info("No signals above threshold. Lower it in the sidebar.")
-        else:
-            c1, c2 = st.columns([3, 2])
-            with c1:
-                top = sig.nlargest(min(20, len(sig)), "risk_score")
-                top["label"] = top["drug_name"].str.title() + " → " + top["adverse_event"].str.title()
-                fig = go.Figure()
-                for _, r in top.iterrows():
-                    fig.add_trace(go.Bar(
-                        y=[r["label"]], x=[r["risk_score"]], orientation="h",
-                        marker=dict(color=ALERT_MAP.get(r.get("alert_level", "low"), C["blue"]), opacity=0.85),
-                        hovertemplate=f"<b>{r['drug_name'].title()}</b> → {r['adverse_event'].title()}<br>"
-                                     f"Risk: {r['risk_score']:.4f}<br>Alert: {r.get('alert_level','?')}<extra></extra>",
-                        showlegend=False,
-                    ))
-                fig.update_layout(title="Top Safety Signals", xaxis_title="Risk Score",
-                                  yaxis=dict(autorange="reversed"), bargap=0.22)
-                st.plotly_chart(theme(fig, max(380, len(top) * 26)), use_container_width=True)
-
-            with c2:
-                if "alert_level" in sig.columns:
-                    ad = sig["alert_level"].value_counts().reset_index()
-                    ad.columns = ["Level", "Count"]
-                    fig2 = px.pie(ad, values="Count", names="Level", color="Level",
-                                 color_discrete_map=ALERT_MAP, hole=0.55)
-                    fig2.update_traces(textposition="inside", textinfo="label+percent",
-                                       textfont=dict(size=11))
-                    fig2.update_layout(title="Alert Distribution",
-                                       legend=dict(orientation="h", y=-0.1, x=0.5, xanchor="center"))
-                    st.plotly_chart(theme(fig2, 380), use_container_width=True)
-
-            # ── Severity-coded alert table ───────────
-            st.markdown("---")
-            st.markdown("### 🚨 Alert Table")
-            alert_rows = sig.nlargest(30, "risk_score")
-            for _, r in alert_rows.iterrows():
-                sev_row(r.get("alert_level", "low"), r["drug_name"],
-                        r["adverse_event"], r["risk_score"])
+        with section_card("Signal detection workspace"):
+            st.markdown('<div id="signals"></div>', unsafe_allow_html=True)
+            if not has_s:
+                st.warning("Run the training pipeline first.")
+                st.code("python scripts/generate_faers_data.py\npython -m src.models.train_model")
+                return
+    
+            sig = f_scores[f_scores["risk_score"] >= risk_thresh].copy()
+    
+            col_h, col_dl = st.columns([5, 1])
+            with col_h:
+                st.markdown(f"### 🔍 Safety Signals  <span style='color:#55657d;font-size:0.8rem;font-weight:400'>"
+                            f"threshold ≥ {risk_thresh}</span>", unsafe_allow_html=True)
+            with col_dl:
+                if not sig.empty:
+                    csv = sig.to_csv(index=False)
+                    st.download_button("⬇ Export CSV", csv, "safety_signals.csv", "text/csv")
+    
+            if sig.empty:
+                st.info("No signals above threshold. Lower it in the sidebar.")
+            else:
+                c1, c2 = st.columns([3, 2])
+                with c1:
+                    top = sig.nlargest(min(20, len(sig)), "risk_score")
+                    top["label"] = top["drug_name"].str.title() + " → " + top["adverse_event"].str.title()
+                    fig = go.Figure()
+                    for _, r in top.iterrows():
+                        fig.add_trace(go.Bar(
+                            y=[r["label"]], x=[r["risk_score"]], orientation="h",
+                            marker=dict(color=ALERT_MAP.get(r.get("alert_level", "low"), C["blue"]), opacity=0.85),
+                            hovertemplate=f"<b>{r['drug_name'].title()}</b> → {r['adverse_event'].title()}<br>"
+                                         f"Risk: {r['risk_score']:.4f}<br>Alert: {r.get('alert_level','?')}<extra></extra>",
+                            showlegend=False,
+                        ))
+                    fig.update_layout(title="Top Safety Signals", xaxis_title="Risk Score",
+                                      yaxis=dict(autorange="reversed"), bargap=0.22)
+                    st.plotly_chart(theme(fig, max(380, len(top) * 26)), use_container_width=True)
+    
+                with c2:
+                    if "alert_level" in sig.columns:
+                        ad = sig["alert_level"].value_counts().reset_index()
+                        ad.columns = ["Level", "Count"]
+                        fig2 = px.pie(ad, values="Count", names="Level", color="Level",
+                                     color_discrete_map=ALERT_MAP, hole=0.55)
+                        fig2.update_traces(textposition="inside", textinfo="label+percent",
+                                           textfont=dict(size=11))
+                        fig2.update_layout(title="Alert Distribution",
+                                           legend=dict(orientation="h", y=-0.1, x=0.5, xanchor="center"))
+                        st.plotly_chart(theme(fig2, 380), use_container_width=True)
+    
+                # ── Severity-coded alert table ───────────
+                st.markdown("---")
+                st.markdown("### 🚨 Alert Table")
+                alert_rows = sig.nlargest(30, "risk_score")
+                for _, r in alert_rows.iterrows():
+                    sev_row(r.get("alert_level", "low"), r["drug_name"],
+                            r["adverse_event"], r["risk_score"])
 
     # ══════════════════════════════════════════════════
     #  TAB 2 — DRUG RISK ANALYSIS
     # ══════════════════════════════════════════════════
     with t2:
-        st.markdown('<div id="risk"></div>', unsafe_allow_html=True)
-        if not has_s:
-            st.warning("No signal data.")
-            return
-
-        st.markdown("### 💊 Drug × Event Risk Heatmap")
-
-        hm = f_scores.copy()
-        top_d = hm.groupby("drug_name")["risk_score"].mean().nlargest(15).index.tolist()
-        top_e = hm.groupby("adverse_event")["risk_score"].mean().nlargest(15).index.tolist()
-        hm = hm[hm["drug_name"].isin(top_d) & hm["adverse_event"].isin(top_e)]
-
-        if not hm.empty:
-            pv = hm.pivot_table(values="risk_score", index="drug_name",
-                                columns="adverse_event", aggfunc="mean").fillna(0)
-            fig_hm = go.Figure(go.Heatmap(
-                z=pv.values, x=[e.title() for e in pv.columns],
-                y=[d.title() for d in pv.index],
-                colorscale=[[0,"#060a13"],[0.25,"#142042"],[0.5,"#3877f6"],
-                            [0.75,"#f5a623"],[1,"#ef4444"]],
-                colorbar=dict(title="Risk", thickness=12, len=0.8),
-                hovertemplate="<b>%{y}</b> → %{x}<br>Risk: %{z:.4f}<extra></extra>",
-            ))
-            fig_hm.update_layout(title="Risk Score Matrix",
-                                 xaxis=dict(tickangle=-45, tickfont=dict(size=10)),
-                                 yaxis=dict(tickfont=dict(size=11)))
-            st.plotly_chart(theme(fig_hm, 520), use_container_width=True)
-
-        st.markdown("---")
-        st.markdown("### 📊 Drug Summary")
-        c_bar, c_tbl = st.columns([3, 2])
-        with c_bar:
-            ds = (f_scores.groupby("drug_name")["risk_score"]
-                  .agg(["mean","max","count"]).reset_index()
-                  .rename(columns={"mean":"avg_risk","max":"max_risk","count":"signals"})
-                  .nlargest(20,"avg_risk"))
-            fig_d = go.Figure(go.Bar(
-                y=ds["drug_name"].str.title(), x=ds["avg_risk"], orientation="h",
-                marker=dict(color=ds["avg_risk"],
-                            colorscale=[[0,"#142042"],[0.5,"#f5a623"],[1,"#ef4444"]]),
-                hovertemplate="<b>%{y}</b><br>Avg Risk: %{x:.4f}<extra></extra>",
-            ))
-            fig_d.update_layout(title="Top Drugs by Avg Risk", xaxis_title="Avg Risk Score",
-                                yaxis=dict(autorange="reversed"), bargap=0.2)
-            st.plotly_chart(theme(fig_d, 480), use_container_width=True)
-        with c_tbl:
-            st.markdown("<div style='height:36px'></div>", unsafe_allow_html=True)
-            tbl = ds.copy()
-            tbl.columns = ["Drug","Avg Risk","Max Risk","Signals"]
-            tbl["Drug"] = tbl["Drug"].str.title()
-            tbl = tbl.round(4)
-            st.dataframe(tbl, use_container_width=True, hide_index=True, height=440)
+        with section_card("Drug × event risk"):
+            st.markdown('<div id="risk"></div>', unsafe_allow_html=True)
+            if not has_s:
+                st.warning("No signal data.")
+                return
+    
+            st.markdown("### 💊 Drug × Event Risk Heatmap")
+    
+            hm = f_scores.copy()
+            top_d = hm.groupby("drug_name")["risk_score"].mean().nlargest(15).index.tolist()
+            top_e = hm.groupby("adverse_event")["risk_score"].mean().nlargest(15).index.tolist()
+            hm = hm[hm["drug_name"].isin(top_d) & hm["adverse_event"].isin(top_e)]
+    
+            if not hm.empty:
+                pv = hm.pivot_table(values="risk_score", index="drug_name",
+                                    columns="adverse_event", aggfunc="mean").fillna(0)
+                fig_hm = go.Figure(go.Heatmap(
+                    z=pv.values, x=[e.title() for e in pv.columns],
+                    y=[d.title() for d in pv.index],
+                    colorscale=[[0,"#060a13"],[0.25,"#142042"],[0.5,"#3877f6"],
+                                [0.75,"#f5a623"],[1,"#ef4444"]],
+                    colorbar=dict(title="Risk", thickness=12, len=0.8),
+                    hovertemplate="<b>%{y}</b> → %{x}<br>Risk: %{z:.4f}<extra></extra>",
+                ))
+                fig_hm.update_layout(title="Risk Score Matrix",
+                                     xaxis=dict(tickangle=-45, tickfont=dict(size=10)),
+                                     yaxis=dict(tickfont=dict(size=11)))
+                st.plotly_chart(theme(fig_hm, 520), use_container_width=True)
+    
+            st.markdown("---")
+            st.markdown("### 📊 Drug Summary")
+            c_bar, c_tbl = st.columns([3, 2])
+            with c_bar:
+                ds = (f_scores.groupby("drug_name")["risk_score"]
+                      .agg(["mean","max","count"]).reset_index()
+                      .rename(columns={"mean":"avg_risk","max":"max_risk","count":"signals"})
+                      .nlargest(20,"avg_risk"))
+                fig_d = go.Figure(go.Bar(
+                    y=ds["drug_name"].str.title(), x=ds["avg_risk"], orientation="h",
+                    marker=dict(color=ds["avg_risk"],
+                                colorscale=[[0,"#142042"],[0.5,"#f5a623"],[1,"#ef4444"]]),
+                    hovertemplate="<b>%{y}</b><br>Avg Risk: %{x:.4f}<extra></extra>",
+                ))
+                fig_d.update_layout(title="Top Drugs by Avg Risk", xaxis_title="Avg Risk Score",
+                                    yaxis=dict(autorange="reversed"), bargap=0.2)
+                st.plotly_chart(theme(fig_d, 480), use_container_width=True)
+            with c_tbl:
+                st.markdown("<div style='height:36px'></div>", unsafe_allow_html=True)
+                tbl = ds.copy()
+                tbl.columns = ["Drug","Avg Risk","Max Risk","Signals"]
+                tbl["Drug"] = tbl["Drug"].str.title()
+                tbl = tbl.round(4)
+                st.dataframe(tbl, use_container_width=True, hide_index=True, height=440)
 
     # ══════════════════════════════════════════════════
     #  TAB 3 — ADVERSE EVENT TRENDS
     # ══════════════════════════════════════════════════
     with t3:
-        st.markdown('<div id="trends"></div>', unsafe_allow_html=True)
-        if not has_r or "report_date" not in raw.columns:
-            st.warning("No temporal data.")
-            return
-
-        st.markdown("### 📈 Reporting Trends")
-        td = f_raw.dropna(subset=["report_date"]).copy()
-        td["ym"] = td["report_date"].dt.to_period("M").astype(str)
-
-        monthly = td.groupby("ym").size().reset_index(name="count")
-        fig_t = go.Figure(go.Scatter(
-            x=monthly["ym"], y=monthly["count"], mode="lines+markers",
-            line=dict(color=C["blue"], width=2.5), marker=dict(size=4),
-            fill="tozeroy", fillcolor="rgba(56,119,246,0.05)",
-            hovertemplate="<b>%{x}</b><br>Reports: %{y:,}<extra></extra>",
-        ))
-        fig_t.update_layout(title="Monthly Report Volume", xaxis_title="Month", yaxis_title="Reports")
-        st.plotly_chart(theme(fig_t, 360), use_container_width=True)
-
-        st.markdown("---")
-        st.markdown("### 🔬 Drug-Specific Trends")
-        defs = td["drug_name"].value_counts().head(3).index.tolist()
-        sel = st.multiselect("Select drugs", sorted(td["drug_name"].unique()), default=defs, key="t3_drugs")
-        if sel:
-            palette = [C["blue"], C["emerald"], C["amber"], C["rose"], C["violet"], C["cyan"]]
-            sub = td[td["drug_name"].isin(sel)].groupby(["ym","drug_name"]).size().reset_index(name="cnt")
-            fig_dm = go.Figure()
-            for i, d in enumerate(sel):
-                s = sub[sub["drug_name"] == d]
-                fig_dm.add_trace(go.Scatter(
-                    x=s["ym"], y=s["cnt"], name=d.title(), mode="lines+markers",
-                    line=dict(color=palette[i % len(palette)], width=2), marker=dict(size=4),
-                ))
-            fig_dm.update_layout(title="Drug Trend Comparison", xaxis_title="Month", yaxis_title="Reports",
-                                 legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center"))
-            st.plotly_chart(theme(fig_dm, 380), use_container_width=True)
-
-        if "severity" in td.columns:
+        with section_card("Temporal trends"):
+            st.markdown('<div id="trends"></div>', unsafe_allow_html=True)
+            if not has_r or "report_date" not in raw.columns:
+                st.warning("No temporal data.")
+                return
+    
+            st.markdown("### 📈 Reporting Trends")
+            td = f_raw.dropna(subset=["report_date"]).copy()
+            td["ym"] = td["report_date"].dt.to_period("M").astype(str)
+    
+            monthly = td.groupby("ym").size().reset_index(name="count")
+            fig_t = go.Figure(go.Scatter(
+                x=monthly["ym"], y=monthly["count"], mode="lines+markers",
+                line=dict(color=C["blue"], width=2.5), marker=dict(size=4),
+                fill="tozeroy", fillcolor="rgba(56,119,246,0.05)",
+                hovertemplate="<b>%{x}</b><br>Reports: %{y:,}<extra></extra>",
+            ))
+            fig_t.update_layout(title="Monthly Report Volume", xaxis_title="Month", yaxis_title="Reports")
+            st.plotly_chart(theme(fig_t, 360), use_container_width=True)
+    
             st.markdown("---")
-            st.markdown("### 📊 Severity Over Time")
-            sv = td.groupby(["ym","severity"]).size().reset_index(name="cnt")
-            sc = {"mild":C["low"],"moderate":C["medium"],"severe":C["high"],"life-threatening":C["critical"]}
-            fig_sv = px.area(sv, x="ym", y="cnt", color="severity", color_discrete_map=sc,
-                             labels={"ym":"Month","cnt":"Reports","severity":"Severity"})
-            fig_sv.update_layout(title="Severity Distribution",
-                                 legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center"))
-            st.plotly_chart(theme(fig_sv, 370), use_container_width=True)
+            st.markdown("### 🔬 Drug-Specific Trends")
+            defs = td["drug_name"].value_counts().head(3).index.tolist()
+            sel = st.multiselect("Select drugs", sorted(td["drug_name"].unique()), default=defs, key="t3_drugs")
+            if sel:
+                palette = [C["blue"], C["emerald"], C["amber"], C["rose"], C["violet"], C["cyan"]]
+                sub = td[td["drug_name"].isin(sel)].groupby(["ym","drug_name"]).size().reset_index(name="cnt")
+                fig_dm = go.Figure()
+                for i, d in enumerate(sel):
+                    s = sub[sub["drug_name"] == d]
+                    fig_dm.add_trace(go.Scatter(
+                        x=s["ym"], y=s["cnt"], name=d.title(), mode="lines+markers",
+                        line=dict(color=palette[i % len(palette)], width=2), marker=dict(size=4),
+                    ))
+                fig_dm.update_layout(title="Drug Trend Comparison", xaxis_title="Month", yaxis_title="Reports",
+                                     legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center"))
+                st.plotly_chart(theme(fig_dm, 380), use_container_width=True)
+    
+            if "severity" in td.columns:
+                st.markdown("---")
+                st.markdown("### 📊 Severity Over Time")
+                sv = td.groupby(["ym","severity"]).size().reset_index(name="cnt")
+                sc = {"mild":C["low"],"moderate":C["medium"],"severe":C["high"],"life-threatening":C["critical"]}
+                fig_sv = px.area(sv, x="ym", y="cnt", color="severity", color_discrete_map=sc,
+                                 labels={"ym":"Month","cnt":"Reports","severity":"Severity"})
+                fig_sv.update_layout(title="Severity Distribution",
+                                     legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center"))
+                st.plotly_chart(theme(fig_sv, 370), use_container_width=True)
 
     # ══════════════════════════════════════════════════
     #  TAB 4 — NETWORK GRAPH
     # ══════════════════════════════════════════════════
     with t4:
-        st.markdown('<div id="network"></div>', unsafe_allow_html=True)
-        if not has_s:
-            st.warning("No signal data.")
-            return
-
-        st.markdown("### 🌐 Drug-Event Relationship Network")
-        st.markdown("<p style='color:#6b7fa0;font-size:0.82rem;margin-top:-8px'>"
-                    "Interactive graph — <b style='color:#6da0ff'>blue</b> = drugs, "
-                    "<b style='color:#f5a623'>amber</b> = events. Edge color = alert level.</p>",
-                    unsafe_allow_html=True)
-
-        n_nodes = st.slider("Number of top signal pairs", 10, 80, 35, key="net_n")
-        with st.spinner("Building network …"):
-            network_html = build_network_html(f_scores, top_n=n_nodes)
-        components.html(network_html, height=520, scrolling=False)
+        with section_card("Relationship network"):
+            st.markdown('<div id="network"></div>', unsafe_allow_html=True)
+            if not has_s:
+                st.warning("No signal data.")
+                return
+    
+            st.markdown("### 🌐 Drug-Event Relationship Network")
+            st.markdown("<p style='color:#6b7fa0;font-size:0.82rem;margin-top:-8px'>"
+                        "Interactive graph — <b style='color:#6da0ff'>blue</b> = drugs, "
+                        "<b style='color:#f5a623'>amber</b> = events. Edge color = alert level.</p>",
+                        unsafe_allow_html=True)
+    
+            n_nodes = st.slider("Number of top signal pairs", 10, 80, 35, key="net_n")
+            with st.spinner("Building network …"):
+                network_html = build_network_html(f_scores, top_n=n_nodes)
+            components.html(network_html, height=520, scrolling=False)
 
     # ══════════════════════════════════════════════════
     #  TAB 5 — GEOGRAPHIC MAP
     # ══════════════════════════════════════════════════
     with t5:
-        st.markdown('<div id="map"></div>', unsafe_allow_html=True)
-        if not has_r or "country" not in raw.columns:
-            st.warning("No geographic data.")
-            return
-
-        st.markdown("### 🗺️ Geographic Distribution of Reports")
-
-        iso = {
-            "US":"USA","UK":"GBR","DE":"DEU","FR":"FRA","JP":"JPN","CA":"CAN",
-            "AU":"AUS","BR":"BRA","IN":"IND","MX":"MEX","IT":"ITA","ES":"ESP",
-            "KR":"KOR","CN":"CHN","RU":"RUS","ZA":"ZAF","AR":"ARG","NL":"NLD",
-            "SE":"SWE","CH":"CHE","BE":"BEL","AT":"AUT",
-        }
-        geo = f_raw["country"].value_counts().reset_index()
-        geo.columns = ["code","reports"]
-        geo["iso"] = geo["code"].map(iso).fillna(geo["code"])
-
-        fig_geo = px.choropleth(
-            geo, locations="iso", color="reports", hover_name="code",
-            color_continuous_scale=[[0,"#0d1320"],[0.3,"#142042"],[0.6,"#3877f6"],[1,"#f43f5e"]],
-            labels={"reports":"Reports"}, title="Reports by Country",
-        )
-        fig_geo.update_layout(
-            geo=dict(bgcolor="rgba(0,0,0,0)", lakecolor="rgba(0,0,0,0)",
-                     landcolor="#111827", showframe=False, coastlinecolor="#1c2740"),
-        )
-        st.plotly_chart(theme(fig_geo, 500), use_container_width=True)
-
-        st.markdown("### 📊 Country Breakdown")
-        st.dataframe(geo[["code","reports"]].rename(columns={"code":"Country","reports":"Reports"}),
-                     use_container_width=True, hide_index=True, height=300)
+        with section_card("Geographic distribution"):
+            st.markdown('<div id="map"></div>', unsafe_allow_html=True)
+            if not has_r or "country" not in raw.columns:
+                st.warning("No geographic data.")
+                return
+    
+            st.markdown("### 🗺️ Geographic Distribution of Reports")
+    
+            iso = {
+                "US":"USA","UK":"GBR","DE":"DEU","FR":"FRA","JP":"JPN","CA":"CAN",
+                "AU":"AUS","BR":"BRA","IN":"IND","MX":"MEX","IT":"ITA","ES":"ESP",
+                "KR":"KOR","CN":"CHN","RU":"RUS","ZA":"ZAF","AR":"ARG","NL":"NLD",
+                "SE":"SWE","CH":"CHE","BE":"BEL","AT":"AUT",
+            }
+            geo = f_raw["country"].value_counts().reset_index()
+            geo.columns = ["code","reports"]
+            geo["iso"] = geo["code"].map(iso).fillna(geo["code"])
+    
+            fig_geo = px.choropleth(
+                geo, locations="iso", color="reports", hover_name="code",
+                color_continuous_scale=[[0,"#0d1320"],[0.3,"#142042"],[0.6,"#3877f6"],[1,"#f43f5e"]],
+                labels={"reports":"Reports"}, title="Reports by Country",
+            )
+            fig_geo.update_layout(
+                geo=dict(bgcolor="rgba(0,0,0,0)", lakecolor="rgba(0,0,0,0)",
+                         landcolor="#111827", showframe=False, coastlinecolor="#1c2740"),
+            )
+            st.plotly_chart(theme(fig_geo, 500), use_container_width=True)
+    
+            st.markdown("### 📊 Country Breakdown")
+            st.dataframe(geo[["code","reports"]].rename(columns={"code":"Country","reports":"Reports"}),
+                         use_container_width=True, hide_index=True, height=300)
 
     # ══════════════════════════════════════════════════
     #  TAB 6 — RISK PREDICTION
     # ══════════════════════════════════════════════════
     with t6:
-        st.markdown('<div id="predict"></div>', unsafe_allow_html=True)
-        st.markdown("### 🧪 Real-Time Risk Prediction")
-        st.markdown("<p style='color:#6b7fa0;font-size:0.82rem;margin-top:-8px'>"
-                    "Submit a drug–event pair to the AI model for instant risk assessment.</p>",
-                    unsafe_allow_html=True)
-
-        c_in, c_out = st.columns([2, 3])
-        with c_in:
-            st.markdown('<div class="panel"><h4>Input</h4>', unsafe_allow_html=True)
-            p_drug = st.selectbox("💊 Drug", [""] + (sorted(raw["drug_name"].dropna().unique().tolist()) if has_r else []),
-                                  key="pred_d")
-            p_event = st.selectbox("⚠️ Adverse Event",
-                                   [""] + (sorted(raw["adverse_event"].dropna().unique().tolist()) if has_r else []),
-                                   key="pred_e")
-            go_btn = st.button("🔍  Analyze Risk", use_container_width=True, type="primary")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        with c_out:
-            if go_btn and p_drug and p_event:
-                with st.spinner("🔄 Running inference …"):
-                    result, ms, pred_err = api_predict(p_drug, p_event)
-
-                if result:
-                    risk = result.get("risk_score", 0)
-                    sig_str = result.get("signal_strength", 0)
-                    alert = result.get("alert_level", "low")
-                    ac = ALERT_MAP.get(alert, C["blue"])
-
-                    r1, r2, r3 = st.columns(3)
-                    with r1:
-                        st.markdown(f'<div class="pred-card"><div class="pred-val" style="color:{ac}">{risk:.4f}</div>'
-                                    f'<div class="pred-lbl">Risk Score</div></div>', unsafe_allow_html=True)
-                    with r2:
-                        st.markdown(f'<div class="pred-card"><div class="pred-val" style="color:{C["cyan"]}">{sig_str:.4f}</div>'
-                                    f'<div class="pred-lbl">Signal Strength</div></div>', unsafe_allow_html=True)
-                    with r3:
-                        st.markdown(f'<div class="pred-card"><div class="pred-val" style="color:{ac};font-size:1.8rem">{alert.upper()}</div>'
-                                    f'<div class="pred-lbl">Alert Level</div></div>', unsafe_allow_html=True)
-
-                    # Gauge
-                    fig_g = go.Figure(go.Indicator(
-                        mode="gauge+number", value=risk,
-                        number=dict(font=dict(size=32, color=C["text"]), valueformat=".4f"),
-                        gauge=dict(
-                            axis=dict(range=[0,1], tickwidth=1, tickcolor=C["text_muted"]),
-                            bar=dict(color=ac, thickness=0.25),
-                            bgcolor="rgba(13,19,32,0.5)", borderwidth=1, bordercolor=C["border"],
-                            steps=[
-                                dict(range=[0,0.3], color="rgba(34,197,94,0.06)"),
-                                dict(range=[0.3,0.6], color="rgba(234,179,8,0.06)"),
-                                dict(range=[0.6,0.8], color="rgba(249,115,22,0.06)"),
-                                dict(range=[0.8,1], color="rgba(239,68,68,0.06)"),
-                            ],
-                            threshold=dict(line=dict(color=C["rose"],width=3), thickness=0.8, value=risk),
-                        ),
-                        title=dict(text=f"{p_drug.title()} · {p_event.title()}", font=dict(size=12, color="#94a3b8")),
-                    ))
-                    st.plotly_chart(theme(fig_g, 310), use_container_width=True)
-
-                    st.markdown(f"<p style='text-align:center;color:#55657d;font-size:0.72rem'>"
-                                f"API latency: {ms:.0f}ms</p>", unsafe_allow_html=True)
+        with section_card("Risk prediction lab"):
+            st.markdown('<div id="predict"></div>', unsafe_allow_html=True)
+            st.markdown("### 🧪 Real-Time Risk Prediction")
+            st.markdown("<p style='color:#6b7fa0;font-size:0.82rem;margin-top:-8px'>"
+                        "Submit a drug–event pair to the AI model for instant risk assessment.</p>",
+                        unsafe_allow_html=True)
+    
+            c_in, c_out = st.columns([2, 3])
+            with c_in:
+                st.markdown('<div class="panel"><h4>Input</h4>', unsafe_allow_html=True)
+                p_drug = st.selectbox("💊 Drug", [""] + (sorted(raw["drug_name"].dropna().unique().tolist()) if has_r else []),
+                                      key="pred_d")
+                p_event = st.selectbox("⚠️ Adverse Event",
+                                       [""] + (sorted(raw["adverse_event"].dropna().unique().tolist()) if has_r else []),
+                                       key="pred_e")
+                go_btn = st.button("🔍  Analyze Risk", use_container_width=True, type="primary")
+                st.markdown("</div>", unsafe_allow_html=True)
+    
+            with c_out:
+                if go_btn and p_drug and p_event:
+                    with st.spinner("🔄 Running inference …"):
+                        result, ms, pred_err = api_predict(p_drug, p_event)
+    
+                    if result:
+                        risk = result.get("risk_score", 0)
+                        sig_str = result.get("signal_strength", 0)
+                        alert = result.get("alert_level", "low")
+                        ac = ALERT_MAP.get(alert, C["blue"])
+    
+                        r1, r2, r3 = st.columns(3)
+                        with r1:
+                            st.markdown(f'<div class="pred-card"><div class="pred-val" style="color:{ac}">{risk:.4f}</div>'
+                                        f'<div class="pred-lbl">Risk Score</div></div>', unsafe_allow_html=True)
+                        with r2:
+                            st.markdown(f'<div class="pred-card"><div class="pred-val" style="color:{C["cyan"]}">{sig_str:.4f}</div>'
+                                        f'<div class="pred-lbl">Signal Strength</div></div>', unsafe_allow_html=True)
+                        with r3:
+                            st.markdown(f'<div class="pred-card"><div class="pred-val" style="color:{ac};font-size:1.8rem">{alert.upper()}</div>'
+                                        f'<div class="pred-lbl">Alert Level</div></div>', unsafe_allow_html=True)
+    
+                        # Gauge
+                        fig_g = go.Figure(go.Indicator(
+                            mode="gauge+number", value=risk,
+                            number=dict(font=dict(size=32, color=C["text"]), valueformat=".4f"),
+                            gauge=dict(
+                                axis=dict(range=[0,1], tickwidth=1, tickcolor=C["text_muted"]),
+                                bar=dict(color=ac, thickness=0.25),
+                                bgcolor="rgba(13,19,32,0.5)", borderwidth=1, bordercolor=C["border"],
+                                steps=[
+                                    dict(range=[0,0.3], color="rgba(34,197,94,0.06)"),
+                                    dict(range=[0.3,0.6], color="rgba(234,179,8,0.06)"),
+                                    dict(range=[0.6,0.8], color="rgba(249,115,22,0.06)"),
+                                    dict(range=[0.8,1], color="rgba(239,68,68,0.06)"),
+                                ],
+                                threshold=dict(line=dict(color=C["rose"],width=3), thickness=0.8, value=risk),
+                            ),
+                            title=dict(text=f"{p_drug.title()} · {p_event.title()}", font=dict(size=12, color="#94a3b8")),
+                        ))
+                        st.plotly_chart(theme(fig_g, 310), use_container_width=True)
+    
+                        st.markdown(f"<p style='text-align:center;color:#55657d;font-size:0.72rem'>"
+                                    f"API latency: {ms:.0f}ms</p>", unsafe_allow_html=True)
+                    else:
+                        st.error(pred_err or f"Prediction failed. Ensure the FastAPI server is reachable at {API_BASE}.")
+                        st.code("uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload")
+    
+                elif go_btn:
+                    st.warning("Select both a drug and event.")
                 else:
-                    st.error(pred_err or f"Prediction failed. Ensure the FastAPI server is reachable at {API_BASE}.")
-                    st.code("uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload")
-
-            elif go_btn:
-                st.warning("Select both a drug and event.")
-            else:
-                st.markdown("""
-                <div class="panel" style="text-align:center; padding:50px 24px;">
-                    <p style="font-size:2.5rem; margin-bottom:8px">🧬</p>
-                    <h3 style="margin-bottom:6px !important">Ready to Analyze</h3>
-                    <p style="color:#55657d; font-size:0.82rem">
-                        Select a drug and adverse event, then click <b>Analyze Risk</b>.
-                    </p>
-                </div>""", unsafe_allow_html=True)
-
+                    st.markdown("""
+                    <div class="panel" style="text-align:center; padding:50px 24px;">
+                        <p style="font-size:2.5rem; margin-bottom:8px">🧬</p>
+                        <h3 style="margin-bottom:6px !important">Ready to Analyze</h3>
+                        <p style="color:#55657d; font-size:0.82rem">
+                            Select a drug and adverse event, then click <b>Analyze Risk</b>.
+                        </p>
+                    </div>""", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════
     #  TAB 7 — CAPA WORKFLOW BOARD
     # ══════════════════════════════════════════════════
     with t7:
-        st.markdown('<div id="audit"></div>', unsafe_allow_html=True)
-        render_capa_board()
-
+        with section_card("CAPA operations"):
+            st.markdown('<div id="audit"></div>', unsafe_allow_html=True)
+            render_capa_board()
 
     # ══════════════════════════════════════════════════
     #  TAB 8 — SYSTEM ACTIVITY
     # ══════════════════════════════════════════════════
     with t8:
-        st.markdown('<div id="activity"></div>', unsafe_allow_html=True)
-        c_head, c_btn = st.columns([5, 1])
-        with c_head:
-            st.markdown("### 📜 System Activity Timeline")
-        with c_btn:
-            if st.button("🔄 Refresh", use_container_width=True, key="refresh_system_activity"):
-                fetch_events.clear()
-
-        events = fetch_events(limit=50)
-        
-        if not events:
-            st.info("No system events recorded yet.")
-        else:
-            for ev in events:
-                # Deterministic styling based on event type
-                ev_type = ev.get('event_type', '').lower()
-                if 'create' in ev_type:
-                    icon = "✨"
-                elif 'status' in ev_type or 'change' in ev_type:
-                    icon = "🔄"
-                elif 'error' in ev_type or 'fail' in ev_type:
-                    icon = "❌"
-                elif 'score' in ev_type:
-                    icon = "📊"
-                else:
-                    icon = "📌"
-
-                dt_fmt = pd.to_datetime(ev['created_at']).strftime("%Y-%m-%d %H:%M:%S")
-                user = ev.get('user_id') or 'System'
-                entity_type = str(ev.get('entity_type', '')).upper()
-                desc = normalize_event_description(str(ev.get('event_description', '')))
-                st.markdown(f"{icon} **{dt_fmt}**  •  **{html.escape(entity_type)}**  •  {html.escape(str(user))}")
-                st.write(desc)
-                st.markdown("---")
-
-
+        with section_card("System activity"):
+            st.markdown('<div id="activity"></div>', unsafe_allow_html=True)
+            c_head, c_btn = st.columns([5, 1])
+            with c_head:
+                st.markdown("### 📜 System Activity Timeline")
+            with c_btn:
+                if st.button("🔄 Refresh", use_container_width=True, key="refresh_system_activity"):
+                    fetch_events.clear()
+    
+            events = fetch_events(limit=50)
+            
+            if not events:
+                st.info("No system events recorded yet.")
+            else:
+                for ev in events:
+                    # Deterministic styling based on event type
+                    ev_type = ev.get('event_type', '').lower()
+                    if 'create' in ev_type:
+                        icon = "✨"
+                    elif 'status' in ev_type or 'change' in ev_type:
+                        icon = "🔄"
+                    elif 'error' in ev_type or 'fail' in ev_type:
+                        icon = "❌"
+                    elif 'score' in ev_type:
+                        icon = "📊"
+                    else:
+                        icon = "📌"
+    
+                    dt_fmt = pd.to_datetime(ev['created_at']).strftime("%Y-%m-%d %H:%M:%S")
+                    user = ev.get('user_id') or 'System'
+                    entity_type = str(ev.get('entity_type', '')).upper()
+                    desc = normalize_event_description(str(ev.get('event_description', '')))
+                    st.markdown(f"{icon} **{dt_fmt}**  •  **{html.escape(entity_type)}**  •  {html.escape(str(user))}")
+                    st.write(desc)
+                    st.markdown("---")
+    
+    
 if __name__ == "__main__":
     main()
